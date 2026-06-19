@@ -151,10 +151,11 @@ export class MonopolyGame {
       } else {
         player.jailTurns++;
         if (player.jailTurns >= 3) {
-           player.money -= 50; // Forced to pay
+           player.money -= 200; // Forced to pay
+           this.state.vacationJackpot += 200;
            player.inJail = false;
            player.jailTurns = 0;
-           this.log(`${player.name} paid $50 to get out of jail.`);
+           this.log(`${player.name} paid $200 forced fine to get out of jail.`);
            this.movePlayer(player, d1 + d2);
         } else {
            this.log(`${player.name} did not roll doubles.`);
@@ -407,6 +408,7 @@ export class MonopolyGame {
       player.money += sellValue;
       propState.ownerId = null;
       propState.houses = 0;
+      propState.protected = false;
 
       this.log(`${player.name} sold ${sq.name} to the bank for $${sellValue}.`);
 
@@ -482,6 +484,7 @@ export class MonopolyGame {
        player.money += card.amount || 0;
     } else if (card.action === 'deduct_money') {
        player.money -= card.amount || 0;
+       this.state.vacationJackpot += card.amount || 0;
     } else if (card.action === 'go_to_start') {
        this.state.activeCard = null;
        this.movePlayer(player, (56 - player.position) % 56);
@@ -649,6 +652,7 @@ export class MonopolyGame {
            p.ownerId = null;
            p.houses = 0;
            p.mortgaged = false;
+           p.protected = false;
          }
        });
        
