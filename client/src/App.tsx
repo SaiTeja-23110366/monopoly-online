@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { socket } from './socket';
 import { Lobby } from './components/Lobby';
 import { Board } from './components/Board';
@@ -10,6 +10,7 @@ import type { GameState, TradeOffer } from '../../shared/types';
 
 export const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
+  const [showPopups, setShowPopups] = useState(true);
   // Removed unused vars
   
   // Trading Modal State
@@ -113,11 +114,23 @@ export const App: React.FC = () => {
     return <Lobby onJoin={handleJoin} />;
   }
 
+  useEffect(() => {
+    if (gameState.awaitingBuyDecision !== null || gameState.activeCard !== null || gameState.awaitingFlightDecision !== null || gameState.awaitingSabotage || gameState.awaitingProtection) {
+      const timer = setTimeout(() => setShowPopups(true), 1200);
+      return () => clearTimeout(timer);
+    } else {
+      setShowPopups(false);
+    }
+  }, [gameState.awaitingBuyDecision, gameState.activeCard, gameState.awaitingFlightDecision, gameState.awaitingSabotage, gameState.awaitingProtection]);
+
   const currentPlayer = gameState.players.find(p => p.id === socket.id);
   const isMyTurn = currentPlayer?.id === gameState.players[gameState.turnIndex]?.id;
-  const isAwaitingBuy = gameState.awaitingBuyDecision !== null;
+  const isAwaitingBuy = showPopups && gameState.awaitingBuyDecision !== null;
   const isAwaitingDebtResolution = gameState.awaitingDebtResolution === socket.id;
-  const isAwaitingFlight = gameState.awaitingFlightDecision !== null && gameState.awaitingFlightDecision !== undefined;
+  const isAwaitingFlight = showPopups && gameState.awaitingFlightDecision !== null && gameState.awaitingFlightDecision !== undefined;
+  const isAwaitingSabotage = showPopups && gameState.awaitingSabotage;
+  const isAwaitingProtection = showPopups && gameState.awaitingProtection;
+  const showActiveCard = showPopups && gameState.activeCard !== null;
   const isBankrupt = currentPlayer?.status === 'bankrupt';
 
   let validFlightDestinations: number[] = [];
@@ -138,10 +151,12 @@ export const App: React.FC = () => {
 
   const handleSquareClick = (index: number) => {
     if (!isMyTurn) return;
-    if (gameState.awaitingSabotage) {
+    if (isAwaitingSabotage) {
        socket.emit('execute_sabotage', gameState.roomCode, index);
-    } else if (gameState.awaitingProtection) {
+    } else if (isAwaitingProtection) {
        socket.emit('execute_protection', gameState.roomCode, index);
+    } else if (isAwaitingDebtResolution) {
+       socket.emit('sell_property_to_bank', gameState.roomCode, index);
     }
   };
 
@@ -361,7 +376,7 @@ export const App: React.FC = () => {
       )}
 
       {/* Card Modal */}
-      {gameState.activeCard && <CardModal gameState={gameState} />}
+      {showActiveCard && <CardModal gameState={gameState} />}
 
       {/* Jail Decision Modal */}
       {isJailDecision && !gameState.activeCard && (
