@@ -66,6 +66,11 @@ export class MonopolyGame {
   }
 
   addPlayer(id: string, name: string, color: string) {
+    const existingPlayer = this.state.players.find(p => p.id === id);
+    if (existingPlayer) {
+      this.log(`${name} reconnected to the game.`);
+      return true;
+    }
     if (this.state.state !== 'lobby') return false;
     this.state.players.push({
       id,

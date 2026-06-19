@@ -24,6 +24,7 @@ const io = new Server(server, {
 });
 
 const roomManager = new RoomManager();
+const socketToPlayer = new Map<string, string>();
 
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
@@ -33,8 +34,9 @@ io.on('connection', (socket) => {
     callback({ roomCode });
   });
 
-  socket.on('join_room', (roomCode: string, playerName: string, color: string) => {
-    const joined = roomManager.joinRoom(roomCode, socket.id, playerName, color);
+  socket.on('join_room', (roomCode: string, playerId: string, playerName: string, color: string) => {
+    socketToPlayer.set(socket.id, playerId);
+    const joined = roomManager.joinRoom(roomCode, playerId, playerName, color);
     if (joined) {
       socket.join(roomCode);
       const game = roomManager.getGame(roomCode);
@@ -47,9 +49,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('change_color', (roomCode: string, newColor: string) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      if (game.changeColor(socket.id, newColor)) {
+      if (game.changeColor(playerId, newColor)) {
         io.to(roomCode).emit('game_state_update', game.state);
       }
     }
@@ -65,6 +69,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('start_game', (roomCode: string) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game && game.startGame()) {
       io.to(roomCode).emit('game_state_update', game.state);
@@ -72,138 +78,170 @@ io.on('connection', (socket) => {
   });
 
   socket.on('roll_dice', (roomCode: string) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.rollDice(socket.id);
+      game.rollDice(playerId);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('acknowledge_card', (roomCode: string) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.acknowledgeCard(socket.id);
+      game.acknowledgeCard(playerId);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('execute_sabotage', (roomCode: string, propertyIndex: number) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.executeSabotage(socket.id, propertyIndex);
+      game.executeSabotage(playerId, propertyIndex);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('execute_protection', (roomCode: string, propertyIndex: number) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.executeProtection(socket.id, propertyIndex);
+      game.executeProtection(playerId, propertyIndex);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('end_turn', (roomCode: string) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.endTurn(socket.id);
+      game.endTurn(playerId);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('pay_jail_fine', (roomCode: string) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.payJailFine(socket.id);
+      game.payJailFine(playerId);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('use_jail_card', (roomCode: string) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.useJailCard(socket.id);
+      game.useJailCard(playerId);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('buy_property', (roomCode: string, propertyIndex: number, housesToBuy: number) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.buyProperty(socket.id, propertyIndex, housesToBuy);
+      game.buyProperty(playerId, propertyIndex, housesToBuy);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('upgrade_property', (roomCode: string, propertyIndex: number, housesToBuy: number) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.upgradeProperty(socket.id, propertyIndex, housesToBuy);
+      game.upgradeProperty(playerId, propertyIndex, housesToBuy);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('pass_property', (roomCode: string) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.passProperty(socket.id);
+      game.passProperty(playerId);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('sell_property_to_bank', (roomCode: string, propertyIndex: number) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.sellPropertyToBank(socket.id, propertyIndex);
+      game.sellPropertyToBank(playerId, propertyIndex);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   // Flight Decision
   socket.on('flight_decision', (roomCode: string, destinationIndex: number | null) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.handleFlightDecision(socket.id, destinationIndex);
+      game.handleFlightDecision(playerId, destinationIndex);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   // Trading Events
   socket.on('propose_trade', (roomCode: string, trade) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.proposeTrade(socket.id, trade);
+      game.proposeTrade(playerId, trade);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('accept_trade', (roomCode: string, tradeId: string) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.acceptTrade(socket.id, tradeId);
+      game.acceptTrade(playerId, tradeId);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('reject_trade', (roomCode: string, tradeId: string) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.rejectTrade(socket.id, tradeId);
+      game.rejectTrade(playerId, tradeId);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('counter_trade', (roomCode: string, tradeId: string, newOffer, newRequest) => {
+    const playerId = socketToPlayer.get(socket.id);
+    if (!playerId) return;
     const game = roomManager.getGame(roomCode);
     if (game) {
-      game.counterTrade(socket.id, tradeId, newOffer, newRequest);
+      game.counterTrade(playerId, tradeId, newOffer, newRequest);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
 
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
-    // Optional: handle player disconnecting mid-game
+    socketToPlayer.delete(socket.id);
   });
 });
 

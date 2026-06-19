@@ -8,7 +8,17 @@ import { CardModal } from './components/CardModal';
 import { SQUARES } from './constants/boardData';
 import type { GameState, TradeOffer } from '../../shared/types';
 
+const getStoredPlayerId = () => {
+  let id = localStorage.getItem('monopoly_player_id');
+  if (!id) {
+    id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('monopoly_player_id', id);
+  }
+  return id;
+};
+
 export const App: React.FC = () => {
+  const [playerId] = useState(getStoredPlayerId);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [showPopups, setShowPopups] = useState(true);
   // Removed unused vars
@@ -37,7 +47,7 @@ export const App: React.FC = () => {
     // Hardcoded color logic for demo; later let players pick
     const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b'];
     const color = colors[Math.floor(Math.random() * colors.length)];
-    socket.emit('join_room', roomCode, name, color);
+    socket.emit('join_room', roomCode, playerId, name, color);
   };
 
   const handleChangeColor = (newColor: string) => {
@@ -125,10 +135,10 @@ export const App: React.FC = () => {
 
 
 
-  const currentPlayer = gameState.players.find(p => p.id === socket.id);
+  const currentPlayer = gameState.players.find(p => p.id === playerId);
   const isMyTurn = currentPlayer?.id === gameState.players[gameState.turnIndex]?.id;
   const isAwaitingBuy = showPopups && gameState.awaitingBuyDecision !== null;
-  const isAwaitingDebtResolution = gameState.awaitingDebtResolution === socket.id;
+  const isAwaitingDebtResolution = gameState.awaitingDebtResolution === playerId;
   const isAwaitingFlight = showPopups && gameState.awaitingFlightDecision !== null && gameState.awaitingFlightDecision !== undefined;
   const isAwaitingSabotage = showPopups && gameState.awaitingSabotage;
   const isAwaitingProtection = showPopups && gameState.awaitingProtection;
@@ -299,7 +309,7 @@ export const App: React.FC = () => {
             </p>
             
             <div className="max-h-[60vh] overflow-y-auto pr-2 space-y-3">
-              {Object.values(gameState.properties).filter(p => p.ownerId === socket.id).map(prop => {
+              {Object.values(gameState.properties).filter(p => p.ownerId === playerId).map(prop => {
                 const sq = SQUARES[prop.id];
                 const baseValue = sq.price || 0;
                 const houseValue = prop.houses * ((sq as any).housePrice || 0);
@@ -325,7 +335,7 @@ export const App: React.FC = () => {
                   </div>
                 );
               })}
-              {Object.values(gameState.properties).filter(p => p.ownerId === socket.id).length === 0 && (
+              {Object.values(gameState.properties).filter(p => p.ownerId === playerId).length === 0 && (
                 <div className="text-center p-8 bg-red-950/30 rounded-lg border border-red-900/50">
                   <p className="text-red-400 font-bold text-xl mb-2">No properties left to sell!</p>
                   <p className="text-gray-400 text-sm">You are bankrupt and will be eliminated.</p>

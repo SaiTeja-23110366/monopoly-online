@@ -78,7 +78,7 @@ export interface GameState {
 // Socket Events
 export interface ClientToServerEvents {
   create_room: (callback: (response: { roomCode: string }) => void) => void;
-  join_room: (roomCode: string, playerName: string, color: string) => void;
+  join_room: (roomCode: string, playerId: string, playerName: string, color: string) => void;
   start_game: (roomCode: string) => void;
   change_color: (roomCode: string, newColor: string) => void;
   update_starting_cash: (roomCode: string, cash: number) => void;
