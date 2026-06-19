@@ -110,18 +110,20 @@ export const App: React.FC = () => {
     }
   };
 
-  if (!gameState) {
-    return <Lobby onJoin={handleJoin} />;
-  }
-
   useEffect(() => {
-    if (gameState.awaitingBuyDecision !== null || gameState.activeCard !== null || gameState.awaitingFlightDecision !== null || gameState.awaitingSabotage || gameState.awaitingProtection) {
+    if (gameState?.awaitingBuyDecision !== null && gameState?.awaitingBuyDecision !== undefined || gameState?.activeCard !== null && gameState?.activeCard !== undefined || gameState?.awaitingFlightDecision !== null && gameState?.awaitingFlightDecision !== undefined || gameState?.awaitingSabotage || gameState?.awaitingProtection) {
       const timer = setTimeout(() => setShowPopups(true), 1200);
       return () => clearTimeout(timer);
     } else {
       setShowPopups(false);
     }
-  }, [gameState.awaitingBuyDecision, gameState.activeCard, gameState.awaitingFlightDecision, gameState.awaitingSabotage, gameState.awaitingProtection]);
+  }, [gameState?.awaitingBuyDecision, gameState?.activeCard, gameState?.awaitingFlightDecision, gameState?.awaitingSabotage, gameState?.awaitingProtection]);
+
+  if (!gameState) {
+    return <Lobby onJoin={handleJoin} />;
+  }
+
+
 
   const currentPlayer = gameState.players.find(p => p.id === socket.id);
   const isMyTurn = currentPlayer?.id === gameState.players[gameState.turnIndex]?.id;
