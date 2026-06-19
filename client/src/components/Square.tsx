@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plane, HelpCircle, Package, Zap, ArrowRight, Skull, MapPin, Shield } from 'lucide-react';
+import { Plane, HelpCircle, Package, Zap, ArrowLeft, Skull, MapPin, Shield } from 'lucide-react';
 
 import type { Player } from '../../../shared/types';
 
@@ -58,7 +58,7 @@ export const Square: React.FC<SquareProps> = ({ index, name, type, color, price,
     if (type === 'tax') return <div className="text-gray-400 text-[0.6rem] font-bold mt-0.5">TAX</div>;
     
     // Corners
-    if (name.toLowerCase().includes('start')) return <ArrowRight size={28} className="text-[#4ade80] drop-shadow-[0_0_10px_rgba(74,222,128,0.5)]" />;
+    if (name.toLowerCase().includes('start')) return <ArrowLeft size={28} className="text-[#4ade80] drop-shadow-[0_0_10px_rgba(74,222,128,0.5)]" />;
     if (name.toLowerCase().includes('jail')) return <Skull size={28} className="text-gray-200" />;
     if (name.toLowerCase().includes('vacation')) return <MapPin size={28} className="text-[#60a5fa]" />;
     
