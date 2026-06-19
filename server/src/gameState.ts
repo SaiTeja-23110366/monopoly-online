@@ -151,16 +151,13 @@ export class MonopolyGame {
       } else {
         player.jailTurns++;
         if (player.jailTurns >= 3) {
-           player.money -= 200; // Forced to pay
-           this.state.vacationJackpot += 200;
            player.inJail = false;
            player.jailTurns = 0;
-           this.log(`${player.name} paid $200 forced fine to get out of jail.`);
-           this.movePlayer(player, d1 + d2);
+           this.log(`${player.name} failed to roll doubles 3 times! They are released for free and can roll normally next turn.`);
         } else {
            this.log(`${player.name} did not roll doubles.`);
-           this.endTurn(playerId); // Turn ends
         }
+        this.endTurn(playerId); // Turn ends
       }
       return;
     }
