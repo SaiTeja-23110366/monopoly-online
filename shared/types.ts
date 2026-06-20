@@ -75,6 +75,16 @@ export interface GameState {
   awaitingSabotage: boolean; // True when a player needs to click a property to destroy
   awaitingProtection: boolean; // True when a player needs to click a property to protect
   turnDeadline?: number;
+
+  // Game pacing and animations
+  activeAnimation?: {
+    type: 'rent';
+    message: string;
+    amount: number;
+    payerId?: string;
+    payeeId?: string;
+  } | null;
+  isAnimatingMovement?: boolean;
 }
 
 // Socket Events

@@ -115,7 +115,14 @@ io.on('connection', (socket) => {
     if (!game) return;
     const playerId = getPlayerId(game, socket.id);
     if (!playerId) return;
-    game.rollDice(playerId);
+    game.rollDice(
+      playerId,
+      () => { io.to(roomCode).emit('game_state_update', game.state); },
+      async () => {
+        await roomManager.saveGame(game, true);
+        io.to(roomCode).emit('game_state_update', game.state);
+      }
+    );
     await roomManager.saveGame(game);
     io.to(roomCode).emit('game_state_update', game.state);
   });
@@ -177,8 +184,29 @@ io.on('connection', (socket) => {
     const activePlayer = game.getCurrentPlayer();
     if (!activePlayer) return;
 
-    if (!game.state.hasRolled) {
-      game.rollDice(activePlayer.id);
+    if (game.state.activeAnimation) {
+      game.state.activeAnimation = undefined;
+      // Resume the actual decision deadline
+      if (game.state.awaitingDebtResolution) {
+         game.setDeadline(120);
+      } else if (game.state.awaitingFlightDecision !== null) {
+         game.setDeadline(15);
+      } else if (game.state.activeCard !== null) {
+         game.setDeadline(15);
+      } else if (game.state.awaitingBuyDecision !== null) {
+         game.setDeadline(15);
+      } else {
+         game.endTurn(activePlayer.id);
+      }
+    } else if (!game.state.hasRolled) {
+      game.rollDice(
+        activePlayer.id,
+        () => { io.to(roomCode).emit('game_state_update', game.state); },
+        async () => {
+          await roomManager.saveGame(game, true);
+          io.to(roomCode).emit('game_state_update', game.state);
+        }
+      );
     } else if (game.state.awaitingBuyDecision !== null) {
       game.passProperty(activePlayer.id);
     } else if (game.state.awaitingFlightDecision !== null) {

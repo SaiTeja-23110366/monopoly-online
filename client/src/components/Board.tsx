@@ -89,12 +89,23 @@ export const Board: React.FC<BoardProps> = ({ gameState, onSquareClick }) => {
               );
             })}
 
-            {/* Center Logo Area */}
+            {/* Center Logo Area / Animation Area */}
             <div 
-              className="flex flex-col justify-center items-center pointer-events-none"
+              className="flex flex-col justify-center items-center pointer-events-none relative"
               style={{ gridColumn: '3 / span 11', gridRow: '3 / span 11' }}
             >
-              {/* Blank center per user request */}
+              {gameState?.activeAnimation && gameState.activeAnimation.type === 'rent' && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center animate-in zoom-in fade-in duration-500">
+                  <div className="bg-black/60 backdrop-blur-md border border-white/10 p-8 rounded-3xl shadow-[0_0_100px_rgba(239,68,68,0.4)] flex flex-col items-center">
+                    <span className="text-6xl font-black text-red-500 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)] mb-4">
+                      -${gameState.activeAnimation.amount}
+                    </span>
+                    <span className="text-2xl font-bold text-gray-200 tracking-widest uppercase">
+                      {gameState.activeAnimation.message}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
           </div>

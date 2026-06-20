@@ -140,7 +140,7 @@ export class MonopolyGame {
   }
 
   // Basic dice roll logic
-  rollDice(playerId: string) {
+  rollDice(playerId: string, onStep?: () => void, onComplete?: () => void) {
     const player = this.getCurrentPlayer();
     if (!player || player.id !== playerId) return;
     if (this.state.hasRolled) return; // Prevent multiple rolls
@@ -160,7 +160,7 @@ export class MonopolyGame {
         player.inJail = false;
         player.jailTurns = 0;
         this.log(`${player.name} rolled doubles and got out of jail!`);
-        this.movePlayer(player, d1 + d2);
+        this.movePlayer(player, d1 + d2, onStep, onComplete);
       } else {
         player.jailTurns++;
         if (player.jailTurns >= 3) {
@@ -187,68 +187,95 @@ export class MonopolyGame {
       this.state.doublesCount = 0; // Turn will end normally after movement
     }
 
-    this.movePlayer(player, d1 + d2);
+    this.movePlayer(player, d1 + d2, onStep, onComplete);
   }
 
-  movePlayer(player: Player, spaces: number) {
-    const newPosition = (player.position + spaces) % 56;
+  movePlayer(player: Player, spaces: number, onStep?: () => void, onComplete?: () => void) {
+    this.state.isAnimatingMovement = true;
+    let spacesMoved = 0;
     
-    if (newPosition < player.position) {
-      // Passed Start
-      const isLandingOnStart = newPosition === 0;
-      const passStartMoney = isLandingOnStart ? 1000 : 750;
-      player.money += passStartMoney;
-      player.flightChances = 1;
-      
-      let mineCount = 0;
-      Object.values(this.state.properties).forEach(prop => {
-         if (prop.ownerId === player.id && BOARD_DATA[prop.id].type === 'utility') {
-             mineCount++;
-         }
-      });
-      
-      let mineBonus = 0;
-      if (mineCount === 1) mineBonus = 200;
-      else if (mineCount === 2) mineBonus = 500;
-      else if (mineCount === 3) mineBonus = 1000;
-      else if (mineCount === 4) mineBonus = 2000;
+    // Set a safety deadline in case interval hangs, though it shouldn't
+    this.setDeadline(spaces * 0.3 + 5);
 
-      if (mineBonus > 0) {
-          player.money += mineBonus;
-          this.log(`${player.name} ${isLandingOnStart ? 'landed on' : 'passed'} Start, collected $${passStartMoney}, gained a flight chance, and got a $${mineBonus} bonus from their Mines!`);
-      } else {
-          this.log(`${player.name} ${isLandingOnStart ? 'landed on' : 'passed'} Start, collected $${passStartMoney}, and gained a flight chance.`);
+    const interval = setInterval(() => {
+      spacesMoved++;
+      player.position = (player.position + 1) % 56;
+      
+      // Pass Start Logic happens precisely when crossing 0
+      if (player.position === 0) {
+        const isLandingOnStart = spacesMoved === spaces;
+        const passStartMoney = isLandingOnStart ? 1000 : 750;
+        player.money += passStartMoney;
+        player.flightChances = 1;
+        
+        let mineCount = 0;
+        Object.values(this.state.properties).forEach(prop => {
+           if (prop.ownerId === player.id && BOARD_DATA[prop.id].type === 'utility') {
+               mineCount++;
+           }
+        });
+        
+        let mineBonus = 0;
+        if (mineCount === 1) mineBonus = 200;
+        else if (mineCount === 2) mineBonus = 500;
+        else if (mineCount === 3) mineBonus = 1000;
+        else if (mineCount === 4) mineBonus = 2000;
+
+        if (mineBonus > 0) {
+            player.money += mineBonus;
+            this.log(`${player.name} ${isLandingOnStart ? 'landed on' : 'passed'} Start, collected $${passStartMoney}, gained a flight chance, and got a $${mineBonus} bonus from their Mines!`);
+        } else {
+            this.log(`${player.name} ${isLandingOnStart ? 'landed on' : 'passed'} Start, collected $${passStartMoney}, and gained a flight chance.`);
+        }
       }
-    }
 
-    player.position = newPosition;
-    const sq = BOARD_DATA[newPosition];
-    this.log(`${player.name} landed on ${sq.name}.`);
+      if (onStep) onStep();
 
-    const needsBuyDecision = this.handleLanding(player, sq);
-    
-    // Check if debt resolution or flight decision was triggered during landing
-    if (this.state.awaitingDebtResolution) {
-      this.setDeadline(120);
-      return; // Do not end turn, waiting for player to sell
-    }
+      // When movement finishes
+      if (spacesMoved === spaces) {
+        clearInterval(interval);
+        this.state.isAnimatingMovement = false;
+        
+        const sq = BOARD_DATA[player.position];
+        this.log(`${player.name} landed on ${sq.name}.`);
 
-    if (this.state.awaitingFlightDecision !== null) {
-      this.setDeadline(15);
-      return; // Do not end turn, waiting for player to decide on flight
-    }
+        const needsBuyDecision = this.handleLanding(player, sq);
+        
+        // If rent animation was triggered, it sets its own 4s deadline in handleLanding
+        if (this.state.activeAnimation) {
+          if (onComplete) onComplete();
+          return;
+        }
 
-    if (this.state.activeCard !== null) {
-      this.setDeadline(15);
-      return; // Do not end turn, waiting for card acknowledgment
-    }
+        // Check if debt resolution or flight decision was triggered during landing
+        if (this.state.awaitingDebtResolution) {
+          this.setDeadline(120);
+          if (onComplete) onComplete();
+          return; // Do not end turn, waiting for player to sell
+        }
 
-    if (needsBuyDecision) {
-      this.state.awaitingBuyDecision = newPosition;
-      this.setDeadline(15);
-    } else {
-      this.endTurn(player.id);
-    }
+        if (this.state.awaitingFlightDecision !== null) {
+          this.setDeadline(15);
+          if (onComplete) onComplete();
+          return; // Do not end turn, waiting for player to decide on flight
+        }
+
+        if (this.state.activeCard !== null) {
+          this.setDeadline(15);
+          if (onComplete) onComplete();
+          return; // Do not end turn, waiting for card acknowledgment
+        }
+
+        if (needsBuyDecision) {
+          this.state.awaitingBuyDecision = player.position;
+          this.setDeadline(15);
+        } else {
+          this.endTurn(player.id);
+        }
+        
+        if (onComplete) onComplete();
+      }
+    }, 250); // 250ms per space
   }
 
   handleLanding(player: Player, sq: BoardSquare): boolean {
@@ -325,6 +352,15 @@ export class MonopolyGame {
         player.money -= rent;
         owner.money += rent;
         this.log(`${player.name} paid $${rent} rent to ${owner.name}.`);
+
+        this.state.activeAnimation = {
+          type: 'rent',
+          message: `${player.name} paid rent to ${owner.name}`,
+          amount: rent,
+          payerId: player.id,
+          payeeId: owner.id
+        };
+        this.setDeadline(4);
       }
       
       const isInDebt = this.checkDebt(player.id);
