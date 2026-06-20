@@ -74,6 +74,7 @@ export interface GameState {
   activeCard: ActiveCard | null;
   awaitingSabotage: boolean; // True when a player needs to click a property to destroy
   awaitingProtection: boolean; // True when a player needs to click a property to protect
+  turnDeadline?: number;
 }
 
 // Socket Events
@@ -87,6 +88,7 @@ export interface ClientToServerEvents {
   roll_dice: (roomCode: string) => void;
   acknowledge_card: (roomCode: string) => void;
   leave_game: (roomCode: string) => void;
+  check_timeout: (roomCode: string) => void;
   execute_sabotage: (roomCode: string, propertyIndex: number) => void;
   execute_protection: (roomCode: string, propertyIndex: number) => void;
   end_turn: (roomCode: string) => void;

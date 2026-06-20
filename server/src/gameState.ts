@@ -107,6 +107,10 @@ export class MonopolyGame {
     return true;
   }
 
+  setDeadline(seconds: number) {
+    this.state.turnDeadline = Date.now() + seconds * 1000 + 2000; // 2s grace period
+  }
+
   startGame() {
     if (this.state.players.length < 1) return false; // Dev mode: allow 1 player
     
@@ -117,6 +121,7 @@ export class MonopolyGame {
 
     this.state.state = 'playing';
     this.log('Game started!');
+    this.setDeadline(10);
     return true;
   }
 
@@ -146,6 +151,7 @@ export class MonopolyGame {
     
     const isDouble = d1 === d2;
     this.state.hasRolled = !isDouble; // If doubles, they get to roll again
+    if (isDouble) this.setDeadline(10);
 
     this.log(`${player.name} rolled a ${d1} and ${d2}.`);
 
@@ -223,19 +229,23 @@ export class MonopolyGame {
     
     // Check if debt resolution or flight decision was triggered during landing
     if (this.state.awaitingDebtResolution) {
+      this.setDeadline(120);
       return; // Do not end turn, waiting for player to sell
     }
 
     if (this.state.awaitingFlightDecision !== null) {
+      this.setDeadline(15);
       return; // Do not end turn, waiting for player to decide on flight
     }
 
     if (this.state.activeCard !== null) {
+      this.setDeadline(15);
       return; // Do not end turn, waiting for card acknowledgment
     }
 
     if (needsBuyDecision) {
       this.state.awaitingBuyDecision = newPosition;
+      this.setDeadline(15);
     } else {
       this.endTurn(player.id);
     }
@@ -529,9 +539,11 @@ export class MonopolyGame {
     } else if (card.action === 'sabotage') {
        needsTarget = true;
        this.state.awaitingSabotage = true;
+       this.setDeadline(15);
     } else if (card.action === 'protect') {
        needsTarget = true;
        this.state.awaitingProtection = true;
+       this.setDeadline(15);
     }
 
     this.state.activeCard = null;
@@ -625,6 +637,7 @@ export class MonopolyGame {
       const nextPlayer = this.getCurrentPlayer();
       this.log(`It is now ${nextPlayer?.name}'s turn.`);
     }
+    this.setDeadline(10);
   }
 
   checkDebt(playerId: string): boolean {
@@ -640,6 +653,7 @@ export class MonopolyGame {
       } else {
         // Has properties, must sell
         this.state.awaitingDebtResolution = playerId;
+        this.setDeadline(120);
         return true; // Must wait for resolution
       }
     }

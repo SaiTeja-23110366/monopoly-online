@@ -170,6 +170,38 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('game_state_update', game.state);
   });
 
+  socket.on('check_timeout', async (roomCode: string) => {
+    const game = await roomManager.getGame(roomCode);
+    if (!game || !game.state.turnDeadline || Date.now() < game.state.turnDeadline) return;
+
+    const activePlayer = game.getCurrentPlayer();
+    if (!activePlayer) return;
+
+    if (!game.state.hasRolled) {
+      game.rollDice(activePlayer.id);
+    } else if (game.state.awaitingBuyDecision !== null) {
+      game.passProperty(activePlayer.id);
+    } else if (game.state.awaitingFlightDecision !== null) {
+      game.state.awaitingFlightDecision = null;
+      game.endTurn(activePlayer.id);
+    } else if (game.state.awaitingSabotage) {
+      game.state.awaitingSabotage = false;
+      game.endTurn(activePlayer.id);
+    } else if (game.state.awaitingProtection) {
+      game.state.awaitingProtection = false;
+      game.endTurn(activePlayer.id);
+    } else if (game.state.awaitingDebtResolution) {
+      game.checkBankruptcy(activePlayer);
+      game.state.awaitingDebtResolution = null;
+      game.endTurn(activePlayer.id);
+    } else if (game.state.activeCard !== null) {
+      game.acknowledgeCard(activePlayer.id);
+    }
+    
+    await roomManager.saveGame(game, true);
+    io.to(roomCode).emit('game_state_update', game.state);
+  });
+
   socket.on('pay_jail_fine', async (roomCode: string) => {
     const game = await roomManager.getGame(roomCode);
     if (!game) return;

@@ -28,6 +28,9 @@ export const App: React.FC = () => {
   const [editingTrade, setEditingTrade] = useState<TradeOffer | undefined>(undefined);
   const [viewingTrade, setViewingTrade] = useState<TradeOffer | undefined>(undefined);
 
+  // Timer State
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+
   useEffect(() => {
     socket.on('game_state_update', (state: GameState) => {
       setGameState(state);
@@ -138,6 +141,28 @@ export const App: React.FC = () => {
       setShowPopups(false);
     }
   }, [gameState?.awaitingBuyDecision, gameState?.activeCard, gameState?.awaitingFlightDecision, gameState?.awaitingSabotage, gameState?.awaitingProtection]);
+
+  useEffect(() => {
+    if (!gameState?.turnDeadline || gameState.state !== 'playing') {
+      setTimeLeft(null);
+      return;
+    }
+
+    const updateTimer = () => {
+      const remaining = Math.max(0, Math.floor((gameState.turnDeadline! - Date.now()) / 1000));
+      setTimeLeft(remaining);
+
+      // Emit check_timeout exactly when it hits 0
+      if (remaining === 0 && gameState.players[gameState.turnIndex]?.id === playerId) {
+        socket.emit('check_timeout', gameState.roomCode);
+      }
+    };
+
+    updateTimer(); // Initial call
+    const intervalId = setInterval(updateTimer, 500); // Check every 500ms
+
+    return () => clearInterval(intervalId);
+  }, [gameState?.turnDeadline, gameState?.state, gameState?.turnIndex, playerId, gameState?.roomCode]);
 
   if (!gameState) {
     return <Lobby onJoin={handleJoin} />;
@@ -306,52 +331,49 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Debt Resolution Modal */}
+      {/* Debt Resolution Slide */}
       {isAwaitingDebtResolution && (
-        <div className="fixed inset-0 z-[70] bg-black/90 flex flex-col items-center justify-center p-4 backdrop-blur-md">
-          <div className="bg-[#161622] border-2 border-red-500 p-8 rounded-2xl w-full max-w-2xl shadow-[0_0_50px_rgba(239,68,68,0.3)] animate-in slide-in-from-top-10">
-            <h2 className="text-3xl font-black mb-2 text-red-500 tracking-widest text-center uppercase">
-              DEBT RESOLUTION
-            </h2>
-            <p className="text-gray-300 text-center mb-6 text-lg">
-              You are in debt! Your balance is <span className="font-bold text-red-400">${currentPlayer?.money}</span>.
-              <br/>You must sell properties to the bank to resolve your debt.
+        <div className="absolute left-0 top-0 bottom-0 w-96 bg-[#161622]/95 border-r border-red-600 z-[60] flex flex-col shadow-[20px_0_50px_rgba(220,38,38,0.3)] animate-in slide-in-from-left backdrop-blur-md">
+          <div className="p-6 border-b border-white/10">
+            <h2 className="text-2xl font-black text-red-500 tracking-widest uppercase mb-2">DEBT RESOLUTION</h2>
+            <p className="text-gray-300 text-sm">
+              Balance: <span className="font-bold text-red-400">${currentPlayer?.money}</span>
+              <br/>Sell properties to the bank or trade with players!
             </p>
-            
-            <div className="max-h-[60vh] overflow-y-auto pr-2 space-y-3">
-              {Object.values(gameState.properties).filter(p => p.ownerId === playerId).map(prop => {
-                const sq = SQUARES[prop.id];
-                const baseValue = sq.price || 0;
-                const houseValue = prop.houses * ((sq as any).housePrice || 0);
-                const sellValue = Math.floor((baseValue + houseValue) * 0.75);
-                
-                return (
-                  <div key={prop.id} className="flex items-center justify-between bg-[#212130] p-4 rounded-lg border border-white/5">
-                    <div className="flex items-center gap-4">
-                      {sq.color && <div className="w-4 h-8 rounded-full" style={{ backgroundColor: sq.color }}></div>}
-                      <div>
-                        <p className="font-bold text-lg">{sq.name}</p>
-                        <p className="text-sm text-gray-400">
-                          {prop.houses > 0 ? `${prop.houses === 5 ? 'Hotel' : prop.houses + ' Houses'}` : 'Base Property'}
-                        </p>
-                      </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {Object.values(gameState.properties).filter(p => p.ownerId === playerId).map(prop => {
+              const sq = SQUARES[prop.id];
+              const baseValue = sq.price || 0;
+              const houseValue = prop.houses * ((sq as any).housePrice || 0);
+              const sellValue = Math.floor((baseValue + houseValue) * 0.75);
+              
+              return (
+                <div key={prop.id} className="bg-[#212130] p-3 rounded-lg border border-white/5 flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    {sq.color && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sq.color }}></div>}
+                    <div>
+                      <p className="font-bold">{sq.name}</p>
+                      <p className="text-xs text-gray-400">
+                        {prop.houses > 0 ? `${prop.houses === 5 ? 'Hotel' : prop.houses + ' Houses'}` : 'Base'}
+                      </p>
                     </div>
-                    <button 
-                      onClick={() => handleSellToBank(prop.id)}
-                      className="bg-red-600 hover:bg-red-500 px-6 py-2 rounded-lg font-bold text-white transition-colors flex items-center gap-2 shadow-lg"
-                    >
-                      Sell for <span className="text-[#4ade80]">${sellValue}</span>
-                    </button>
                   </div>
-                );
-              })}
-              {Object.values(gameState.properties).filter(p => p.ownerId === playerId).length === 0 && (
-                <div className="text-center p-8 bg-red-950/30 rounded-lg border border-red-900/50">
-                  <p className="text-red-400 font-bold text-xl mb-2">No properties left to sell!</p>
-                  <p className="text-gray-400 text-sm">You are bankrupt and will be eliminated.</p>
+                  <button 
+                    onClick={() => handleSellToBank(prop.id)}
+                    className="w-full bg-red-900/50 hover:bg-red-600 text-red-200 hover:text-white py-2 rounded text-sm font-bold transition-colors border border-red-500/30"
+                  >
+                    Sell to Bank for ${sellValue}
+                  </button>
                 </div>
-              )}
-            </div>
+              );
+            })}
+            {Object.values(gameState.properties).filter(p => p.ownerId === playerId).length === 0 && (
+              <div className="text-center p-4 bg-red-950/30 rounded border border-red-900/50">
+                <p className="text-red-400 font-bold mb-1">No properties left!</p>
+                <p className="text-gray-400 text-xs">You are bankrupt and will be eliminated.</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -560,16 +582,70 @@ export const App: React.FC = () => {
           </div>
         )}
         
-        {/* Target Selection Overlays */}
+        {/* Action Slides */}
         {gameState.awaitingSabotage && isMyTurn && (
-           <div className="absolute top-4 z-[55] bg-red-600 text-white font-black px-6 py-3 rounded-full animate-pulse shadow-[0_0_20px_rgba(220,38,38,0.8)] border-2 border-white pointer-events-none">
-             SABOTAGE: Click an opponent's property to destroy its houses!
-           </div>
+          <div className="absolute left-0 top-0 bottom-0 w-80 bg-[#161622]/95 border-r border-red-500 z-[60] flex flex-col shadow-[20px_0_50px_rgba(220,38,38,0.2)] animate-in slide-in-from-left backdrop-blur-md">
+            <div className="p-6 border-b border-white/10">
+              <h2 className="text-2xl font-black text-red-500 tracking-widest uppercase">SABOTAGE!</h2>
+              <p className="text-gray-400 text-sm mt-2">Select an opponent's property to destroy.</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {Object.values(gameState.properties).filter(p => p.ownerId && p.ownerId !== playerId && !p.protected).map(prop => {
+                const sq = SQUARES[prop.id];
+                const owner = gameState.players.find(pl => pl.id === prop.ownerId);
+                return (
+                  <button 
+                    key={prop.id}
+                    onClick={() => socket.emit('execute_sabotage', gameState.roomCode, prop.id)}
+                    className="w-full text-left bg-[#212130] hover:bg-red-900/50 p-3 rounded-lg border border-white/5 hover:border-red-500/50 transition-all group"
+                  >
+                    <div className="flex items-center gap-3 mb-1">
+                      {sq.color && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sq.color }}></div>}
+                      <span className="font-bold">{sq.name}</span>
+                    </div>
+                    <div className="text-xs text-gray-400 flex justify-between">
+                      <span>Owner: {owner?.name}</span>
+                      <span>{prop.houses > 0 ? (prop.houses === 5 ? 'Hotel' : `${prop.houses} Houses`) : 'Base'}</span>
+                    </div>
+                  </button>
+                );
+              })}
+              {Object.values(gameState.properties).filter(p => p.ownerId && p.ownerId !== playerId && !p.protected).length === 0 && (
+                <div className="text-center p-4 text-gray-400">No valid targets! Wait for timeout.</div>
+              )}
+            </div>
+          </div>
         )}
         {gameState.awaitingProtection && isMyTurn && (
-           <div className="absolute top-4 z-[55] bg-cyan-600 text-white font-black px-6 py-3 rounded-full animate-pulse shadow-[0_0_20px_rgba(8,145,178,0.8)] border-2 border-white pointer-events-none">
-             PROTECTION: Click one of your properties to protect it!
-           </div>
+          <div className="absolute left-0 top-0 bottom-0 w-80 bg-[#161622]/95 border-r border-cyan-500 z-[60] flex flex-col shadow-[20px_0_50px_rgba(6,182,212,0.2)] animate-in slide-in-from-left backdrop-blur-md">
+            <div className="p-6 border-b border-white/10">
+              <h2 className="text-2xl font-black text-cyan-400 tracking-widest uppercase">PROTECT!</h2>
+              <p className="text-gray-400 text-sm mt-2">Select one of your properties to shield.</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {Object.values(gameState.properties).filter(p => p.ownerId === playerId && !p.protected).map(prop => {
+                const sq = SQUARES[prop.id];
+                return (
+                  <button 
+                    key={prop.id}
+                    onClick={() => socket.emit('execute_protection', gameState.roomCode, prop.id)}
+                    className="w-full text-left bg-[#212130] hover:bg-cyan-900/50 p-3 rounded-lg border border-white/5 hover:border-cyan-500/50 transition-all group"
+                  >
+                    <div className="flex items-center gap-3 mb-1">
+                      {sq.color && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sq.color }}></div>}
+                      <span className="font-bold">{sq.name}</span>
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {prop.houses > 0 ? (prop.houses === 5 ? 'Hotel' : `${prop.houses} Houses`) : 'Base'}
+                    </div>
+                  </button>
+                );
+              })}
+              {Object.values(gameState.properties).filter(p => p.ownerId === playerId && !p.protected).length === 0 && (
+                <div className="text-center p-4 text-gray-400">No valid targets! Wait for timeout.</div>
+              )}
+            </div>
+          </div>
         )}
         
         {/* We pass gameState to Board so it can render player tokens and property ownership later */}
@@ -635,6 +711,15 @@ export const App: React.FC = () => {
               <h3 className="font-bold text-gray-300 mb-2 text-center">
                 {isMyTurn ? "It's your turn!" : `Waiting for ${currentPlayer?.name}...`}
               </h3>
+
+              {timeLeft !== null && gameState.state === 'playing' && (
+                <div className="flex items-center justify-center gap-2 mb-3 bg-black/40 py-2 px-4 rounded-lg border border-white/5 mx-auto w-max">
+                  <span className="text-gray-400 font-bold uppercase tracking-wider text-xs">Time Left:</span>
+                  <span className={`text-lg font-mono font-black ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-green-400'}`}>
+                    {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                  </span>
+                </div>
+              )}
               
               <div className="flex gap-2 justify-center">
                 <div className="w-12 h-12 bg-white text-black flex items-center justify-center text-2xl font-black rounded-lg shadow-inner">
