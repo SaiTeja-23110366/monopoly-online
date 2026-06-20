@@ -31,6 +31,9 @@ export const App: React.FC = () => {
   // Timer State
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
+  // Mobile Tab State
+  const [activeTab, setActiveTab] = useState<'board' | 'players' | 'trades' | 'log'>('board');
+
   useEffect(() => {
     socket.on('game_state_update', (state: GameState) => {
       setGameState(state);
@@ -228,7 +231,7 @@ export const App: React.FC = () => {
   const STARTING_CASH_OPTIONS = [1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000];
 
   return (
-    <div className="flex w-full h-screen bg-[#0a0a0f] text-white overflow-hidden relative">
+    <div className="flex w-full h-screen bg-[#0a0a0f] text-white overflow-hidden relative pb-16 md:pb-0">
       
       {/* Property Modal (Buy or Upgrade) */}
       {isAwaitingBuy && isMyTurn && buySquare && propState && (
@@ -333,7 +336,7 @@ export const App: React.FC = () => {
 
       {/* Debt Resolution Slide */}
       {isAwaitingDebtResolution && (
-        <div className="absolute left-0 top-0 bottom-0 w-96 bg-[#161622]/95 border-r border-red-600 z-[60] flex flex-col shadow-[20px_0_50px_rgba(220,38,38,0.3)] animate-in slide-in-from-left backdrop-blur-md">
+        <div className="fixed md:absolute inset-x-0 bottom-16 md:bottom-0 md:top-0 h-[70vh] md:h-auto md:w-96 bg-[#161622]/95 border-t md:border-t-0 md:border-r border-red-600 z-[60] flex flex-col shadow-[0_-20px_50px_rgba(220,38,38,0.3)] md:shadow-[20px_0_50px_rgba(220,38,38,0.3)] rounded-t-3xl md:rounded-none animate-in slide-in-from-bottom md:slide-in-from-left backdrop-blur-md">
           <div className="p-6 border-b border-white/10">
             <h2 className="text-2xl font-black text-red-500 tracking-widest uppercase mb-2">DEBT RESOLUTION</h2>
             <p className="text-gray-300 text-sm">
@@ -584,7 +587,7 @@ export const App: React.FC = () => {
         
         {/* Action Slides */}
         {gameState.awaitingSabotage && isMyTurn && (
-          <div className="absolute left-0 top-0 bottom-0 w-80 bg-[#161622]/95 border-r border-red-500 z-[60] flex flex-col shadow-[20px_0_50px_rgba(220,38,38,0.2)] animate-in slide-in-from-left backdrop-blur-md">
+          <div className="fixed md:absolute inset-x-0 bottom-16 md:bottom-0 md:top-0 h-[60vh] md:h-auto md:w-80 bg-[#161622]/95 border-t md:border-t-0 md:border-r border-red-500 z-[60] flex flex-col shadow-[0_-20px_50px_rgba(220,38,38,0.2)] md:shadow-[20px_0_50px_rgba(220,38,38,0.2)] rounded-t-3xl md:rounded-none animate-in slide-in-from-bottom md:slide-in-from-left backdrop-blur-md">
             <div className="p-6 border-b border-white/10">
               <h2 className="text-2xl font-black text-red-500 tracking-widest uppercase">SABOTAGE!</h2>
               <p className="text-gray-400 text-sm mt-2">Select an opponent's property to destroy.</p>
@@ -617,7 +620,7 @@ export const App: React.FC = () => {
           </div>
         )}
         {gameState.awaitingProtection && isMyTurn && (
-          <div className="absolute left-0 top-0 bottom-0 w-80 bg-[#161622]/95 border-r border-cyan-500 z-[60] flex flex-col shadow-[20px_0_50px_rgba(6,182,212,0.2)] animate-in slide-in-from-left backdrop-blur-md">
+          <div className="fixed md:absolute inset-x-0 bottom-16 md:bottom-0 md:top-0 h-[60vh] md:h-auto md:w-80 bg-[#161622]/95 border-t md:border-t-0 md:border-r border-cyan-500 z-[60] flex flex-col shadow-[0_-20px_50px_rgba(6,182,212,0.2)] md:shadow-[20px_0_50px_rgba(6,182,212,0.2)] rounded-t-3xl md:rounded-none animate-in slide-in-from-bottom md:slide-in-from-left backdrop-blur-md">
             <div className="p-6 border-b border-white/10">
               <h2 className="text-2xl font-black text-cyan-400 tracking-widest uppercase">PROTECT!</h2>
               <p className="text-gray-400 text-sm mt-2">Select one of your properties to shield.</p>
@@ -648,15 +651,55 @@ export const App: React.FC = () => {
           </div>
         )}
         
-        {/* We pass gameState to Board so it can render player tokens and property ownership later */}
-        <Board 
-          gameState={gameState} 
-          onSquareClick={(gameState.awaitingSabotage || gameState.awaitingProtection) && isMyTurn ? handleSquareClick : undefined} 
-        />
+        {/* Board Area */}
+        <div className={`flex-1 relative items-center justify-center overflow-hidden ${activeTab === 'board' ? 'flex' : 'hidden md:flex'}`}>
+          <Board 
+            gameState={gameState} 
+            onSquareClick={(gameState.awaitingSabotage || gameState.awaitingProtection) && isMyTurn ? handleSquareClick : undefined} 
+          />
+          
+          {/* Mobile Floating Action Drawer */}
+          {gameState.state === 'playing' && isMyTurn && activeTab === 'board' && (
+            <div className="md:hidden absolute bottom-4 left-4 right-4 bg-[#212130] rounded-xl border border-white/10 p-4 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-[45]">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-gray-300">It's your turn!</h3>
+                {timeLeft !== null && (
+                  <div className="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-lg">
+                    <span className={`font-mono font-black ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-green-400'}`}>
+                      {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                    </span>
+                  </div>
+                )}
+              </div>
+              
+              {!gameState.hasRolled && (
+                <button onClick={handleRollDice} className="bg-indigo-600 hover:bg-indigo-500 w-full py-3 rounded-lg font-bold">
+                  Roll Dice
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-[#161622] border-t border-white/10 flex items-center justify-around z-[50]">
+        <button onClick={() => setActiveTab('board')} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'board' ? 'text-cyan-400' : 'text-gray-400'}`}>
+          <span className="text-xl leading-none">🎲</span>
+          <span className="text-[10px] font-bold mt-1 uppercase">Board</span>
+        </button>
+        <button onClick={() => setActiveTab('players')} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'players' ? 'text-cyan-400' : 'text-gray-400'}`}>
+          <span className="text-xl leading-none">👥</span>
+          <span className="text-[10px] font-bold mt-1 uppercase">Players</span>
+        </button>
+        <button onClick={() => setIsTradeModalOpen(true)} className={`flex flex-col items-center justify-center w-full h-full text-gray-400`}>
+          <span className="text-xl leading-none">🤝</span>
+          <span className="text-[10px] font-bold mt-1 uppercase">Trade</span>
+        </button>
       </div>
 
       {/* Right Sidebar - Players & Controls */}
-      <div className="w-72 bg-[#161622] border-l border-white/5 flex flex-col p-4">
+      <div className={`w-full md:w-72 bg-[#161622] border-l border-white/5 flex-col p-4 overflow-y-auto ${activeTab === 'players' ? 'flex' : 'hidden md:flex'}`}>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">Players</h2>
           <button 
