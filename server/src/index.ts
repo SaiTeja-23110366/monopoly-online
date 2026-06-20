@@ -49,6 +49,7 @@ io.on('connection', (socket) => {
         return;
       }
       player.socketId = socket.id;
+      socket.data.roomCode = roomCode;
       socket.join(roomCode);
       await roomManager.saveGame(game);
       socket.emit('game_state_update', game.state);
@@ -65,6 +66,7 @@ io.on('connection', (socket) => {
   socket.on('join_room', async (roomCode: string, playerId: string, playerName: string, color: string) => {
     const joined = await roomManager.joinRoom(roomCode, playerId, socket.id, playerName, color);
     if (joined) {
+      socket.data.roomCode = roomCode;
       socket.join(roomCode);
       const game = await roomManager.getGame(roomCode);
       if (game) {
@@ -103,7 +105,7 @@ io.on('connection', (socket) => {
     const game = await roomManager.getGame(roomCode);
     if (!game) return;
     if (game.startGame()) {
-      await roomManager.saveGame(game);
+      await roomManager.saveGame(game, true);
       io.to(roomCode).emit('game_state_update', game.state);
     }
   });
@@ -154,7 +156,7 @@ io.on('connection', (socket) => {
     const playerId = getPlayerId(game, socket.id);
     if (!playerId) return;
     game.endTurn(playerId);
-    await roomManager.saveGame(game);
+    await roomManager.saveGame(game, true);
     io.to(roomCode).emit('game_state_update', game.state);
   });
 
@@ -164,7 +166,7 @@ io.on('connection', (socket) => {
     const playerId = getPlayerId(game, socket.id);
     if (!playerId) return;
     game.removePlayer(playerId);
-    await roomManager.saveGame(game);
+    await roomManager.saveGame(game, true);
     io.to(roomCode).emit('game_state_update', game.state);
   });
 
@@ -278,8 +280,21 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('game_state_update', game.state);
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     console.log(`User disconnected: ${socket.id}`);
+    const roomCode = socket.data.roomCode;
+    if (roomCode) {
+      // Check if room is empty
+      const room = io.sockets.adapter.rooms.get(roomCode);
+      if (!room || room.size === 0) {
+        const game = await roomManager.getGame(roomCode);
+        if (game) {
+          await roomManager.saveGame(game, true);
+          roomManager.clearMemory(roomCode);
+          console.log(`Room ${roomCode} is empty. Saved to Redis and cleared from memory.`);
+        }
+      }
+    }
   });
 });
 
