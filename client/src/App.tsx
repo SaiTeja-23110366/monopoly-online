@@ -194,10 +194,10 @@ export const App: React.FC = () => {
   const buySquare = isAwaitingBuy ? SQUARES[gameState.awaitingBuyDecision!] : null;
   const propState = isAwaitingBuy ? gameState.properties[gameState.awaitingBuyDecision!] : null;
   const isUnowned = propState?.ownerId === null;
-  const isOwnedByMe = propState?.ownerId === socket.id;
+  const isOwnedByMe = propState?.ownerId === playerId;
 
   const sameColorProps = buySquare?.color ? (SQUARES as any[]).filter(s => s.color === buySquare.color).map(s => s.id) : [];
-  const ownsAll = sameColorProps.length > 0 && sameColorProps.every(id => gameState.properties[id]?.ownerId === socket.id);
+  const ownsAll = sameColorProps.length > 0 && sameColorProps.every(id => gameState.properties[id]?.ownerId === playerId);
   
   const AVAILABLE_COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
   const STARTING_CASH_OPTIONS = [1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000];
@@ -398,7 +398,7 @@ export const App: React.FC = () => {
       )}
 
       {/* Card Modal */}
-      {showActiveCard && <CardModal gameState={gameState} />}
+      {showActiveCard && <CardModal gameState={gameState} playerId={playerId} />}
 
       {/* Jail Decision Modal */}
       {isJailDecision && !gameState.activeCard && (
@@ -510,10 +510,10 @@ export const App: React.FC = () => {
                 <div key={p.id} className="flex flex-col gap-3 bg-[#212130] p-4 rounded-xl border-2" style={{ borderColor: p.color }}>
                   <div className="flex items-center gap-3">
                     <div className="w-5 h-5 rounded-full" style={{ backgroundColor: p.color }}></div>
-                    <span className="font-bold text-xl">{p.name} {p.id === socket.id ? '(You)' : ''}</span>
+                    <span className="font-bold text-xl">{p.name} {p.id === playerId ? '(You)' : ''}</span>
                   </div>
                   
-                  {p.id === socket.id && (
+                  {p.id === playerId && (
                     <div className="flex flex-wrap gap-2 mt-2">
                       <span className="text-sm text-gray-400 mr-2 flex items-center">Pick Color:</span>
                       {AVAILABLE_COLORS.map(c => (
@@ -530,7 +530,7 @@ export const App: React.FC = () => {
               ))}
             </div>
 
-            {gameState.players[0]?.id === socket.id ? (
+            {gameState.players[0]?.id === playerId ? (
               <div className="bg-[#212130] p-4 rounded-xl border border-white/10 mt-4 text-center w-full max-w-2xl">
                 <p className="text-gray-300 font-bold mb-3">Starting Cash</p>
                 <div className="flex flex-wrap gap-2 justify-center mb-6">
@@ -588,7 +588,7 @@ export const App: React.FC = () => {
               <div className="flex justify-between items-center mb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 rounded-full shadow-lg" style={{ backgroundColor: p.color }}></div>
-                  <span className="font-bold text-lg">{p.name} {p.id === socket.id ? '(You)' : ''}</span>
+                  <span className="font-bold text-lg">{p.name} {p.id === playerId ? '(You)' : ''}</span>
                 </div>
                 {p.status === 'bankrupt' ? (
                   <span className="text-red-500 font-black tracking-wider text-sm">BANKRUPT</span>
@@ -638,17 +638,13 @@ export const App: React.FC = () => {
 
       {/* Modals */}
       {isTradeModalOpen && (
-        <TradeModal 
-          gameState={gameState} 
-          onClose={() => setIsTradeModalOpen(false)} 
+        <TradeModal gameState={gameState} playerId={playerId} onClose={() => setIsTradeModalOpen(false)} 
           existingTrade={editingTrade} 
         />
       )}
 
       {viewingTrade && (
-        <ViewTradeModal
-          gameState={gameState}
-          trade={viewingTrade}
+        <ViewTradeModal gameState={gameState} playerId={playerId} trade={viewingTrade}
           onClose={() => setViewingTrade(undefined)}
           onAccept={() => handleAcceptTrade(viewingTrade.id)}
           onReject={() => handleRejectTrade(viewingTrade.id)}

@@ -1,9 +1,9 @@
 import React from 'react';
 import type { GameState, TradeOffer } from '../../../shared/types';
-import { socket } from '../socket';
 import { SQUARES } from '../constants/boardData';
 
 interface ViewTradeModalProps {
+  playerId: string;
   gameState: GameState;
   trade: TradeOffer;
   onClose: () => void;
@@ -12,8 +12,8 @@ interface ViewTradeModalProps {
   onCounter: () => void;
 }
 
-export const ViewTradeModal: React.FC<ViewTradeModalProps> = ({ gameState, trade, onClose, onAccept, onReject, onCounter }) => {
-  const me = gameState.players.find(p => p.id === socket.id);
+export const ViewTradeModal: React.FC<ViewTradeModalProps> = ({ gameState, playerId, trade, onClose, onAccept, onReject, onCounter }) => {
+  const me = gameState.players.find(p => p.id === playerId);
   const initiator = gameState.players.find(p => p.id === trade.initiatorId)?.name || 'Unknown';
   const target = gameState.players.find(p => p.id === trade.targetId)?.name || 'Unknown';
   

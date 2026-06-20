@@ -3,15 +3,16 @@ import type { GameState } from '../../../shared/types';
 import { socket } from '../socket';
 
 interface CardModalProps {
+  playerId: string;
   gameState: GameState;
   onClose?: () => void; // Optional, usually closed by backend update
 }
 
-export const CardModal: React.FC<CardModalProps> = ({ gameState }) => {
+export const CardModal: React.FC<CardModalProps> = ({ gameState, playerId }) => {
   const card = gameState.activeCard;
   if (!card) return null;
 
-  const isMyTurn = gameState.players[gameState.turnIndex]?.id === socket.id;
+  const isMyTurn = gameState.players[gameState.turnIndex]?.id === playerId;
 
   const handleAcknowledge = () => {
     if (isMyTurn) {

@@ -4,15 +4,16 @@ import { socket } from '../socket';
 import { SQUARES } from '../constants/boardData';
 
 interface TradeModalProps {
+  playerId: string;
   gameState: GameState;
   onClose: () => void;
   // If editing an existing trade (counter-offer)
   existingTrade?: TradeOffer; 
 }
 
-export const TradeModal: React.FC<TradeModalProps> = ({ gameState, onClose, existingTrade }) => {
-  const me = gameState.players.find(p => p.id === socket.id);
-  const otherPlayers = gameState.players.filter(p => p.id !== socket.id && p.status !== 'bankrupt');
+export const TradeModal: React.FC<TradeModalProps> = ({ gameState, playerId, onClose, existingTrade }) => {
+  const me = gameState.players.find(p => p.id === playerId);
+  const otherPlayers = gameState.players.filter(p => p.id !== playerId && p.status !== 'bankrupt');
   
   const [targetId, setTargetId] = useState<string>(existingTrade ? existingTrade.initiatorId : (otherPlayers[0]?.id || ''));
   

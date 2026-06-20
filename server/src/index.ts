@@ -26,7 +26,12 @@ const io = new Server(server, {
 
 const roomManager = new RoomManager();
 import Redis from 'ioredis';
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', { family: 0 });
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+const redis = new Redis(redisUrl, {
+  family: 0,
+  tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
+  retryStrategy: (times) => Math.min(times * 50, 2000),
+});
 
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
