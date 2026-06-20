@@ -85,6 +85,7 @@ export interface GameState {
     payeeId?: string;
   } | null;
   isAnimatingMovement?: boolean;
+  isRollingDice?: boolean;
 }
 
 // Socket Events

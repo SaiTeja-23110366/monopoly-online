@@ -155,39 +155,50 @@ export class MonopolyGame {
 
     this.log(`${player.name} rolled a ${d1} and ${d2}.`);
 
-    if (player.inJail) {
-      if (isDouble) {
-        player.inJail = false;
-        player.jailTurns = 0;
-        this.log(`${player.name} rolled doubles and got out of jail!`);
-        this.movePlayer(player, d1 + d2, onStep, onComplete);
-      } else {
-        player.jailTurns++;
-        if (player.jailTurns >= 3) {
-           player.inJail = false;
-           player.jailTurns = 0;
-           this.log(`${player.name} failed to roll doubles 3 times! They are released for free and can roll normally next turn.`);
-        } else {
-           this.log(`${player.name} did not roll doubles.`);
-        }
-        this.endTurn(playerId); // Turn ends
-      }
-      return;
-    }
+    this.state.isRollingDice = true;
+    
+    // Broadcast the initial state so clients see the rolling animation
+    if (onStep) onStep();
 
-    if (isDouble) {
-      this.state.doublesCount++;
-      if (this.state.doublesCount === 3) {
-        this.log(`${player.name} rolled 3 doubles! Go to jail!`);
-        this.goToJail(player);
-        this.endTurn(playerId);
+    setTimeout(() => {
+      this.state.isRollingDice = false;
+
+      if (player.inJail) {
+        if (isDouble) {
+          player.inJail = false;
+          player.jailTurns = 0;
+          this.log(`${player.name} rolled doubles and got out of jail!`);
+          this.movePlayer(player, d1 + d2, onStep, onComplete);
+        } else {
+          player.jailTurns++;
+          if (player.jailTurns >= 3) {
+             player.inJail = false;
+             player.jailTurns = 0;
+             this.log(`${player.name} failed to roll doubles 3 times! They are released for free and can roll normally next turn.`);
+          } else {
+             this.log(`${player.name} did not roll doubles.`);
+          }
+          this.endTurn(playerId); // Turn ends
+          if (onComplete) onComplete();
+        }
         return;
       }
-    } else {
-      this.state.doublesCount = 0; // Turn will end normally after movement
-    }
 
-    this.movePlayer(player, d1 + d2, onStep, onComplete);
+      if (isDouble) {
+        this.state.doublesCount++;
+        if (this.state.doublesCount === 3) {
+          this.log(`${player.name} rolled 3 doubles! Go to jail!`);
+          this.goToJail(player);
+          this.endTurn(playerId);
+          if (onComplete) onComplete();
+          return;
+        }
+      } else {
+        this.state.doublesCount = 0; // Turn will end normally after movement
+      }
+
+      this.movePlayer(player, d1 + d2, onStep, onComplete);
+    }, 1500);
   }
 
   movePlayer(player: Player, spaces: number, onStep?: () => void, onComplete?: () => void) {

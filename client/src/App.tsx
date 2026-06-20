@@ -655,7 +655,9 @@ export const App: React.FC = () => {
         <div className={`flex-1 relative items-center justify-center overflow-hidden ${activeTab === 'board' ? 'flex' : 'hidden md:flex'}`}>
           <Board 
             gameState={gameState} 
-            onSquareClick={(gameState.awaitingSabotage || gameState.awaitingProtection) && isMyTurn ? handleSquareClick : undefined} 
+            onSquareClick={(gameState.awaitingSabotage || gameState.awaitingProtection) && isMyTurn ? handleSquareClick : undefined}
+            onRollDice={isMyTurn && !gameState.hasRolled && gameState.state === 'playing' ? handleRollDice : undefined}
+            timeLeft={isMyTurn && activeTab === 'board' ? timeLeft : null}
           />
           
           {/* Mobile Floating Action Drawer */}
@@ -672,11 +674,7 @@ export const App: React.FC = () => {
                 )}
               </div>
               
-              {!gameState.hasRolled && (
-                <button onClick={handleRollDice} className="bg-indigo-600 hover:bg-indigo-500 w-full py-3 rounded-lg font-bold">
-                  Roll Dice
-                </button>
-              )}
+              {/* Timer only, Roll Dice button moved to center of board */}
             </div>
           )}
         </div>
@@ -763,24 +761,9 @@ export const App: React.FC = () => {
                   </span>
                 </div>
               )}
-              
-              <div className="flex gap-2 justify-center">
-                <div className="w-12 h-12 bg-white text-black flex items-center justify-center text-2xl font-black rounded-lg shadow-inner">
-                  {gameState.diceValues[0]}
-                </div>
-                <div className="w-12 h-12 bg-white text-black flex items-center justify-center text-2xl font-black rounded-lg shadow-inner">
-                  {gameState.diceValues[1]}
-                </div>
-              </div>
             </div>
 
-            {isMyTurn && !gameState.hasRolled && (
-               <div className="flex flex-col gap-2">
-                 <button onClick={handleRollDice} className="bg-indigo-600 hover:bg-indigo-500 w-full py-3 rounded-lg font-bold transition-colors">
-                   Roll Dice
-                 </button>
-               </div>
-            )}
+            {/* Roll Dice button moved to center of board */}
 
             <button onClick={handleOpenProposeTrade} className="bg-blue-600 hover:bg-blue-500 w-full py-3 rounded-lg font-bold transition-colors shadow-lg">
               Propose Trade
