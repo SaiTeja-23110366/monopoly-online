@@ -31,11 +31,21 @@ export const App: React.FC = () => {
   useEffect(() => {
     socket.on('game_state_update', (state: GameState) => {
       setGameState(state);
+      localStorage.setItem('monopoly_room_code', state.roomCode);
     });
 
     socket.on('error', (msg: string) => {
       console.error(msg);
+      if (msg === 'Game not found' || msg === 'Player not found in this game') {
+         localStorage.removeItem('monopoly_room_code');
+      }
     });
+
+    const roomCode = localStorage.getItem('monopoly_room_code');
+    const storedPlayerId = localStorage.getItem('monopoly_player_id');
+    if (roomCode && storedPlayerId) {
+      socket.emit('reconnect_player', { roomCode, playerId: storedPlayerId });
+    }
 
     return () => {
       socket.off('game_state_update');

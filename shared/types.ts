@@ -1,7 +1,8 @@
 export type PlayerStatus = 'active' | 'bankrupt';
 
 export interface Player {
-  id: string; // Socket ID
+  id: string; // Persistent Player ID
+  socketId: string; // Current Socket ID
   name: string;
   color: string;
   money: number;
@@ -78,6 +79,7 @@ export interface GameState {
 // Socket Events
 export interface ClientToServerEvents {
   create_room: (callback: (response: { roomCode: string }) => void) => void;
+  reconnect_player: (data: { roomCode: string, playerId: string }) => void;
   join_room: (roomCode: string, playerId: string, playerName: string, color: string) => void;
   start_game: (roomCode: string) => void;
   change_color: (roomCode: string, newColor: string) => void;

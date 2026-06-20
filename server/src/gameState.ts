@@ -65,15 +65,17 @@ export class MonopolyGame {
     });
   }
 
-  addPlayer(id: string, name: string, color: string) {
+  addPlayer(id: string, socketId: string, name: string, color: string) {
     const existingPlayer = this.state.players.find(p => p.id === id);
     if (existingPlayer) {
+      existingPlayer.socketId = socketId;
       this.log(`${name} reconnected to the game.`);
       return true;
     }
     if (this.state.state !== 'lobby') return false;
     this.state.players.push({
       id,
+      socketId,
       name,
       color,
       money: 1500,

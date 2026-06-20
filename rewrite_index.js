@@ -1,35 +1,16 @@
-import express from 'express';
-import http from 'http';
-import { Server } from 'socket.io';
-import cors from 'cors';
-import path from 'path';
-import { RoomManager } from './roomManager';
+const fs = require('fs');
 
-const app = express();
-app.use(cors());
+let code = fs.readFileSync('server/src/index.ts', 'utf8');
 
-// Serve static frontend files
-app.use(express.static(path.join(__dirname, '../../client/dist')));
-
-app.use((req, res) => {
-  res.sendFile(path.join(__dirname, '../../client/dist/index.html'));
-});
-
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
-});
-
-
+// The RoomManager is now async, so we must await its methods.
+// I will just rewrite the entire socket.io block.
+const socketIoBlock = `
 const roomManager = new RoomManager();
 import Redis from 'ioredis';
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
 
 io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
+  console.log(\`User connected: \${socket.id}\`);
 
   socket.on('reconnect_player', async ({ roomCode, playerId }) => {
     try {
@@ -264,11 +245,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log(`User disconnected: ${socket.id}`);
+    console.log(\`User disconnected: \${socket.id}\`);
   });
 });
+`;
 
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+let newCode = code.substring(0, code.indexOf('const roomManager'));
+newCode += socketIoBlock;
+newCode += '\nconst PORT = process.env.PORT || 3001;\nserver.listen(PORT, () => {\n  console.log(`Server running on port ${PORT}`);\n});\n';
+
+fs.writeFileSync('server/src/index.ts', newCode);
