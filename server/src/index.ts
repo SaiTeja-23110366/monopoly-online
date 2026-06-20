@@ -26,7 +26,7 @@ const io = new Server(server, {
 
 const roomManager = new RoomManager();
 import Redis from 'ioredis';
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', { family: 0 });
 
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
