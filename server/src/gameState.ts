@@ -669,6 +669,51 @@ export class MonopolyGame {
     }
   }
 
+  removePlayer(playerId: string) {
+    const playerIndex = this.state.players.findIndex(p => p.id === playerId);
+    if (playerIndex === -1) return;
+    const player = this.state.players[playerIndex];
+
+    this.log(`${player.name} left the game.`);
+
+    // Return properties to bank
+    Object.values(this.state.properties).forEach(p => {
+      if (p.ownerId === player.id) {
+        p.ownerId = null;
+        p.houses = 0;
+        p.mortgaged = false;
+        p.protected = false;
+      }
+    });
+
+    // Remove player
+    this.state.players.splice(playerIndex, 1);
+
+    if (this.state.state === 'playing') {
+      if (this.state.turnIndex >= playerIndex && this.state.turnIndex > 0) {
+        this.state.turnIndex--;
+      }
+      if (this.state.players.length > 0) {
+        this.state.turnIndex = this.state.turnIndex % this.state.players.length;
+      }
+
+      // Check win condition
+      const activePlayers = this.state.players.filter(p => p.status === 'active');
+      if (activePlayers.length <= 1 && this.state.players.length > 1) {
+         this.state.state = 'ended';
+         this.log(`${activePlayers[0]?.name || 'Nobody'} has won the game!`);
+      } else if (activePlayers.length === 0) {
+         this.state.state = 'ended';
+      } else {
+         // If it was their turn, maybe we need to end turn, but they are already removed,
+         // so if they were the active player, the turnIndex now points to the next player.
+         // We should just reset doubles and hasRolled.
+         this.state.doublesCount = 0;
+         this.state.hasRolled = false;
+      }
+    }
+  }
+
   // --- Trading Logic ---
   proposeTrade(initiatorId: string, trade: Omit<TradeOffer, 'id' | 'status'>) {
     const tradeId = Math.random().toString(36).substring(2, 8);

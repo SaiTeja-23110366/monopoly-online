@@ -581,26 +581,51 @@ export const App: React.FC = () => {
 
       {/* Right Sidebar - Players & Controls */}
       <div className="w-72 bg-[#161622] border-l border-white/5 flex flex-col p-4">
-        <h2 className="text-xl font-bold mb-4">Players</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Players</h2>
+          <button 
+            onClick={() => {
+              socket.emit('leave_game', gameState.roomCode);
+              localStorage.removeItem('monopoly_room_code');
+              window.location.reload();
+            }}
+            className="px-2 py-1 bg-red-900/50 hover:bg-red-600 text-red-200 hover:text-white rounded text-xs font-bold uppercase tracking-wider transition-colors border border-red-500/30"
+          >
+            Exit Game
+          </button>
+        </div>
         <div className="flex-1 space-y-4">
-          {gameState.players.map((p, i) => (
-            <div key={p.id} className={`p-4 rounded-xl border-2 transition-all ${p.status === 'bankrupt' ? 'border-red-900 opacity-50 grayscale' : gameState.turnIndex === i ? 'border-[#a3e635] bg-[#212130]' : 'border-transparent bg-[#1a1a2e]'}`}>
+          {gameState.players.filter(p => p.status !== 'bankrupt').map((p) => (
+            <div key={p.id} className={`p-4 rounded-xl border-2 transition-all ${gameState.players[gameState.turnIndex]?.id === p.id ? 'border-[#a3e635] bg-[#212130]' : 'border-transparent bg-[#1a1a2e]'}`}>
               <div className="flex justify-between items-center mb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 rounded-full shadow-lg" style={{ backgroundColor: p.color }}></div>
                   <span className="font-bold text-lg">{p.name} {p.id === playerId ? '(You)' : ''}</span>
                 </div>
-                {p.status === 'bankrupt' ? (
-                  <span className="text-red-500 font-black tracking-wider text-sm">BANKRUPT</span>
-                ) : (
-                  <span className="text-green-400 font-mono font-bold">${p.money}</span>
-                )}
+                <span className="text-green-400 font-mono font-bold">${p.money}</span>
               </div>
               <div className="text-xs text-gray-500">
-                {p.status === 'bankrupt' ? 'Eliminated' : `Position: ${p.position}`}
+                Position: {p.position}
               </div>
             </div>
           ))}
+
+          {gameState.players.some(p => p.status === 'bankrupt') && (
+            <div className="mt-6 border-t border-white/10 pt-4">
+              <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Spectators</h3>
+              <div className="space-y-2">
+                {gameState.players.filter(p => p.status === 'bankrupt').map((p) => (
+                  <div key={p.id} className="p-3 rounded-lg border border-gray-800 bg-[#1a1a2e] opacity-60 grayscale flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full shadow-lg" style={{ backgroundColor: p.color }}></div>
+                      <span className="font-bold text-sm text-gray-400">{p.name} {p.id === playerId ? '(You)' : ''}</span>
+                    </div>
+                    <span className="text-xs text-gray-500 font-bold uppercase">Watching</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Action Panel */}

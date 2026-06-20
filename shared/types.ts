@@ -86,6 +86,7 @@ export interface ClientToServerEvents {
   update_starting_cash: (roomCode: string, cash: number) => void;
   roll_dice: (roomCode: string) => void;
   acknowledge_card: (roomCode: string) => void;
+  leave_game: (roomCode: string) => void;
   execute_sabotage: (roomCode: string, propertyIndex: number) => void;
   execute_protection: (roomCode: string, propertyIndex: number) => void;
   end_turn: (roomCode: string) => void;

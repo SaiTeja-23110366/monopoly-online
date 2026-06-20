@@ -158,6 +158,16 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('game_state_update', game.state);
   });
 
+  socket.on('leave_game', async (roomCode: string) => {
+    const game = await roomManager.getGame(roomCode);
+    if (!game) return;
+    const playerId = getPlayerId(game, socket.id);
+    if (!playerId) return;
+    game.removePlayer(playerId);
+    await roomManager.saveGame(game);
+    io.to(roomCode).emit('game_state_update', game.state);
+  });
+
   socket.on('pay_jail_fine', async (roomCode: string) => {
     const game = await roomManager.getGame(roomCode);
     if (!game) return;
