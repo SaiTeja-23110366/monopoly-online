@@ -115,15 +115,6 @@ export const Square: React.FC<SquareProps> = ({ index, name, type, color, price,
                  <span className={`fi fi-${flagCode} text-lg leading-none m-0 p-0 block`} style={{ transform: 'scale(1.2)' }}></span>
                </div>
             )}
-            {houses === 5 ? (
-              <div className="w-3.5 h-3.5 bg-red-600 border-[0.5px] border-white shadow-[0_1px_3px_rgba(0,0,0,0.8)] rounded-[1px] flex items-center justify-center">
-                <span className="text-[0.4rem] font-black text-white leading-none tracking-tighter" style={{ textShadow: '0 1px 1px rgba(0,0,0,0.5)' }}>H</span>
-              </div>
-            ) : houses > 0 ? (
-              Array.from({ length: houses }).map((_, i) => (
-                <div key={i} className="w-1.5 h-1.5 bg-green-500 border border-green-950 shadow-[0_1px_2px_rgba(0,0,0,0.5)] rounded-[1px]"></div>
-              ))
-            ) : null}
           </div>
         )}
 
@@ -160,16 +151,34 @@ export const Square: React.FC<SquareProps> = ({ index, name, type, color, price,
           )}
         </div>
 
-        {/* Price Pill */}
-        {!isCorner && price && !ownerColor ? (
-          <div className={`${priceContainerClass} shrink-0`}>
-            <div className={`bg-[#111118]/80 px-1 py-0.5 rounded-sm border border-white/10 text-[0.55rem] font-bold text-gray-300 shadow-inner whitespace-nowrap`}>
-              {name === 'Money Tax' ? '10% Cash' : (name === 'Property Tax' ? '5% Assets' : `$${price}`)}
+        {/* Bottom / Side Indicator Area */}
+        {!isCorner ? (
+          ownerColor ? (
+            houses > 0 ? (
+              <div className={`${priceContainerClass} shrink-0`}>
+                <div className={`flex ${layoutClass.includes('col') ? 'flex-row' : 'flex-col'} gap-0.5 px-1 py-0.5 rounded-sm bg-black/40 border border-white/10 items-center justify-center shadow-inner`}>
+                  {houses === 5 ? (
+                    <div className="text-[0.5rem] font-black text-red-400">HOTEL</div>
+                  ) : (
+                    Array.from({ length: houses }).map((_, i) => (
+                      <div key={i} className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 border border-green-950 shadow-[0_1px_2px_rgba(0,0,0,0.5)] rounded-[1px]"></div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className={`shrink-0 ${layoutClass.includes('col') ? 'h-4 pb-1' : 'w-4 pr-1'}`}></div>
+            )
+          ) : price ? (
+            <div className={`${priceContainerClass} shrink-0`}>
+              <div className={`bg-[#111118]/80 px-1 py-0.5 rounded-sm border border-white/10 text-[0.55rem] font-bold text-gray-300 shadow-inner whitespace-nowrap`}>
+                {name === 'Money Tax' ? '10% Cash' : (name === 'Property Tax' ? '5% Assets' : `$${price}`)}
+              </div>
             </div>
-          </div>
-        ) : (
-          !isCorner && <div className={`shrink-0 ${layoutClass.includes('col') ? 'h-4 pb-1' : 'w-4 pr-1'}`}></div>
-        )}
+          ) : (
+            <div className={`shrink-0 ${layoutClass.includes('col') ? 'h-4 pb-1' : 'w-4 pr-1'}`}></div>
+          )
+        ) : null}
         
       </div>
     </div>
