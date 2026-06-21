@@ -73,11 +73,12 @@ export const Board: React.FC<BoardProps> = ({ gameState, onSquareClick, onRollDi
     <div className="flex flex-col items-center justify-center w-full h-full bg-[#0a0a0f] overflow-hidden">
       <TransformWrapper
         initialScale={1}
-        minScale={0.5}
-        maxScale={4}
+        minScale={1}
+        maxScale={1}
         centerOnInit={true}
-        wheel={{ step: 0.1 }}
-        doubleClick={{ step: 0.5 }}
+        wheel={{ disabled: true }}
+        pinch={{ disabled: true }}
+        doubleClick={{ disabled: true }}
       >
         <TransformComponent wrapperClass="!w-full !h-full" contentClass="w-[1000px] h-[1000px] md:w-full md:max-w-[800px] md:max-h-[800px] aspect-square flex items-center justify-center relative">
           
