@@ -114,6 +114,30 @@ export const PropertyInfoCard: React.FC<PropertyInfoCardProps> = ({ square, onCl
                 <span>with 4 mines</span>
                 <span className="font-medium text-lg"><span className="text-gray-500 mr-1">$</span>{square.rent[3]}</span>
               </div>
+
+              <div className="mt-4 border-t border-white/10 pt-4">
+                <div className="flex justify-between items-end pb-2 mb-2">
+                  <span className="text-emerald-400 text-sm tracking-wide font-bold uppercase">Pass Go Bonus</span>
+                </div>
+                <div className="flex flex-col gap-3">
+                  <div className="flex justify-between items-center text-emerald-100">
+                    <span>with 1 mine</span>
+                    <span className="font-bold text-lg"><span className="text-emerald-600 mr-1">$</span>200</span>
+                  </div>
+                  <div className="flex justify-between items-center text-emerald-100">
+                    <span>with 2 mines</span>
+                    <span className="font-bold text-lg"><span className="text-emerald-600 mr-1">$</span>500</span>
+                  </div>
+                  <div className="flex justify-between items-center text-emerald-100">
+                    <span>with 3 mines</span>
+                    <span className="font-bold text-lg"><span className="text-emerald-600 mr-1">$</span>1000</span>
+                  </div>
+                  <div className="flex justify-between items-center text-emerald-100">
+                    <span>with 4 mines</span>
+                    <span className="font-bold text-lg"><span className="text-emerald-600 mr-1">$</span>2000</span>
+                  </div>
+                </div>
+              </div>
             </>
           )}
         </div>
