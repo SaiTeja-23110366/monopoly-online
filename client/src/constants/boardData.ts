@@ -11,7 +11,7 @@ export const SQUARES = [
   { name: 'P5', type: 'property', color: '#ADD8E6', price: 100 },
   { name: 'P6', type: 'property', color: '#ADD8E6', price: 120 },
   { name: 'P7', type: 'property', color: '#FFC0CB', price: 140 },
-  { name: 'Mine 1', type: 'utility', price: 150 },
+  { name: 'Mine 1', type: 'utility', price: 400 },
   { name: 'P8', type: 'property', color: '#FFC0CB', price: 140 },
   { name: 'P9', type: 'property', color: '#FFC0CB', price: 160 },
   { name: 'Chance', type: 'chance' },
@@ -30,7 +30,7 @@ export const SQUARES = [
   { name: 'Chest', type: 'chest' },
   { name: 'P17', type: 'property', color: '#FFFF00', price: 260 },
   { name: 'P18', type: 'property', color: '#FFFF00', price: 280 },
-  { name: 'Mine 2', type: 'utility', price: 150 },
+  { name: 'Mine 2', type: 'utility', price: 400 },
   { name: 'Vacation', type: 'corner' }, // 28
   
   // Top (29 to 41) + corner 42
@@ -42,7 +42,7 @@ export const SQUARES = [
   { name: 'Airport 3', type: 'railroad', price: 200 },
   { name: 'P23', type: 'property', color: '#00008B', price: 350 },
   { name: 'P24', type: 'property', color: '#00008B', price: 400 },
-  { name: 'Mine 3', type: 'utility', price: 150 },
+  { name: 'Mine 3', type: 'utility', price: 400 },
   { name: 'P25', type: 'property', color: '#800080', price: 420 },
   { name: 'P26', type: 'property', color: '#800080', price: 420 },
   { name: 'Property Tax', type: 'tax', price: 200 },
@@ -57,7 +57,7 @@ export const SQUARES = [
   { name: 'Chance', type: 'chance' },
   { name: 'P31', type: 'property', color: '#800000', price: 520 },
   { name: 'P32', type: 'property', color: '#800000', price: 520 },
-  { name: 'Mine 4', type: 'utility', price: 150 },
+  { name: 'Mine 4', type: 'utility', price: 400 },
   { name: 'P33', type: 'property', color: '#800000', price: 550 },
   { name: 'P34', type: 'property', color: '#FFD700', price: 600 },
   { name: 'Risk', type: 'chance' },
