@@ -1,4 +1,6 @@
-// Data for 56 blocks exactly as specified
+import re
+
+content = """// Data for 56 blocks exactly as specified
 export const SQUARES = [
   // Bottom (0 to 13) + corner 14
   { name: 'Start', fullName: 'Start', type: 'corner' }, // 0
@@ -86,3 +88,7 @@ export const SQUARES = [
 
   return { ...sq, id: i, housePrice, rent };
 });
+"""
+
+with open('client/src/constants/boardData.ts', 'w', encoding='utf-8') as f:
+    f.write(content)

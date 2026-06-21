@@ -255,7 +255,7 @@ export const App: React.FC = () => {
               >
                 <div className="flex items-center gap-3 mb-1">
                   {sq.color && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sq.color }}></div>}
-                  <span className="font-bold">{sq.name}</span>
+                  <span className="font-bold">{(sq as any).flagCode && <span className={`fi fi-${(sq as any).flagCode} mr-2`}></span>}{(sq as any).fullName || sq.name}</span>
                 </div>
                 <div className="text-xs text-gray-400 flex justify-between">
                   <span>Owner: {owner?.name}</span>
@@ -288,7 +288,7 @@ export const App: React.FC = () => {
               >
                 <div className="flex items-center gap-3 mb-1">
                   {sq.color && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sq.color }}></div>}
-                  <span className="font-bold">{sq.name}</span>
+                  <span className="font-bold">{(sq as any).flagCode && <span className={`fi fi-${(sq as any).flagCode} mr-2`}></span>}{(sq as any).fullName || sq.name}</span>
                 </div>
                 <div className="text-xs text-gray-400">
                   {prop.houses > 0 ? (prop.houses === 5 ? 'Hotel' : `${prop.houses} Houses`) : 'Base'}
@@ -324,7 +324,7 @@ export const App: React.FC = () => {
                 <div className="flex items-center gap-3">
                   {sq.color && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sq.color }}></div>}
                   <div>
-                    <p className="font-bold">{sq.name}</p>
+                    <p className="font-bold">{(sq as any).flagCode && <span className={`fi fi-${(sq as any).flagCode} mr-2`}></span>}{(sq as any).fullName || sq.name}</p>
                     <p className="text-xs text-gray-400">
                       {prop.houses > 0 ? `${prop.houses === 5 ? 'Hotel' : prop.houses + ' Houses'}` : 'Base'}
                     </p>
@@ -355,7 +355,10 @@ export const App: React.FC = () => {
   } else if (isAwaitingBuy && isMyTurn && buySquare && propState) {
     centerContent = (
       <div className="bg-[#161622] border-2 border-indigo-500 p-6 md:p-8 rounded-2xl w-[90vw] md:w-full max-w-md shadow-[0_0_50px_rgba(99,102,241,0.5)] text-center transform scale-105 transition-transform animate-in fade-in zoom-in duration-300 pointer-events-auto max-h-[80vh] overflow-y-auto">
-        <h2 className="text-3xl font-black mb-2 text-white tracking-widest uppercase">{buySquare.name}</h2>
+        <h2 className="text-3xl font-black mb-2 text-white tracking-widest uppercase flex items-center justify-center gap-2">
+          {(buySquare as any).flagCode && <span className={`fi fi-${(buySquare as any).flagCode} text-xl shadow-[0_2px_4px_rgba(0,0,0,0.5)]`}></span>}
+          {(buySquare as any).fullName || buySquare.name}
+        </h2>
         {buySquare.color && <div className="w-16 h-2 mx-auto mb-4 rounded-full" style={{ backgroundColor: buySquare.color }}></div>}
         {isUnowned ? (
           <>

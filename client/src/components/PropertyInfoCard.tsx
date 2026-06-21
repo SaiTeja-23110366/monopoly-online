@@ -13,7 +13,10 @@ export const PropertyInfoCard: React.FC<PropertyInfoCardProps> = ({ square, onCl
         <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors">
           <X size={24} />
         </button>
-        <h2 className="text-3xl font-black mb-2 text-white tracking-widest uppercase">{square.name}</h2>
+        <h2 className="text-3xl font-black mb-2 text-white tracking-widest uppercase flex items-center justify-center gap-2">
+          {square.flagCode && <span className={`fi fi-${square.flagCode} text-xl shadow-[0_2px_4px_rgba(0,0,0,0.5)]`}></span>}
+          {square.fullName || square.name}
+        </h2>
         <p className="text-gray-400 text-lg">{square.type.toUpperCase()}</p>
       </div>
     );
@@ -30,7 +33,10 @@ export const PropertyInfoCard: React.FC<PropertyInfoCardProps> = ({ square, onCl
       </button>
 
       <div className="text-center mb-6 relative">
-        <h2 className="text-3xl font-black text-white tracking-wider">{square.name}</h2>
+        <h2 className="text-3xl font-black text-white tracking-wider flex items-center justify-center gap-3">
+          {square.flagCode && <span className={`fi fi-${square.flagCode} text-2xl shadow-[0_2px_6px_rgba(0,0,0,0.5)] border border-white/10 rounded-sm`}></span>}
+          {square.fullName || square.name}
+        </h2>
         {square.color && (
           <div 
             className="w-16 h-2 mx-auto mt-3 rounded-full opacity-80 shadow-[0_0_10px_currentColor]" 

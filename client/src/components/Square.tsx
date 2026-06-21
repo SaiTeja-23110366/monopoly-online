@@ -17,9 +17,10 @@ interface SquareProps {
   rent?: number[];
   vacationJackpot?: number;
   protected?: boolean;
+  flagCode?: string;
 }
 
-export const Square: React.FC<SquareProps> = ({ index, name, type, color, price, players = [], turnIndex, allPlayers = [], ownerColor, houses = 0, rent, vacationJackpot = 0, protected: isProtected }) => {
+export const Square: React.FC<SquareProps> = ({ index, name, type, color, price, players = [], turnIndex, allPlayers = [], ownerColor, houses = 0, vacationJackpot = 0, protected: isProtected, flagCode }) => {
   // Determine layout based on side of the board for upright text
   let layoutClass = 'flex-col';
   let colorBarClass = 'w-full h-4 mb-1';
@@ -71,7 +72,7 @@ export const Square: React.FC<SquareProps> = ({ index, name, type, color, price,
         ${isCorner ? 'p-2 bg-gradient-to-br from-[#2a2a3b] to-[#161622]' : ''}
       `}
       style={{
-        backgroundColor: ownerColor ? `${ownerColor}30` : (isCorner ? undefined : '#212130'),
+        backgroundColor: ownerColor ? `${ownerColor}60` : (isCorner ? undefined : '#212130'),
         boxShadow: ownerColor 
           ? `inset 0 0 0 3px ${ownerColor}, 0 0 20px ${ownerColor}40` 
           : '0 4px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)',
@@ -103,12 +104,17 @@ export const Square: React.FC<SquareProps> = ({ index, name, type, color, price,
         {/* Property Color Bar */}
         {!isCorner && color && (
           <div 
-            className={`${colorBarClass} opacity-90 shadow-sm shrink-0`} 
+            className={`${colorBarClass} opacity-90 shadow-sm shrink-0 relative`} 
             style={{ 
               backgroundColor: color,
               boxShadow: `0 0 10px ${color}40` // subtle glow
             }}
           >
+            {flagCode && (
+               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full overflow-hidden shadow-[0_2px_4px_rgba(0,0,0,0.8)] border border-white/20 bg-black flex items-center justify-center">
+                 <span className={`fi fi-${flagCode} text-lg leading-none m-0 p-0 block`} style={{ transform: 'scale(1.2)' }}></span>
+               </div>
+            )}
             {houses === 5 ? (
               <div className="w-3.5 h-3.5 bg-red-600 border-[0.5px] border-white shadow-[0_1px_3px_rgba(0,0,0,0.8)] rounded-[1px] flex items-center justify-center">
                 <span className="text-[0.4rem] font-black text-white leading-none tracking-tighter" style={{ textShadow: '0 1px 1px rgba(0,0,0,0.5)' }}>H</span>
@@ -155,12 +161,10 @@ export const Square: React.FC<SquareProps> = ({ index, name, type, color, price,
         </div>
 
         {/* Price Pill */}
-        {!isCorner && price ? (
+        {!isCorner && price && !ownerColor ? (
           <div className={`${priceContainerClass} shrink-0`}>
-            <div className={`bg-[#111118]/80 px-1 py-0.5 rounded-sm border ${ownerColor && rent ? 'border-red-500/50' : 'border-white/10'} text-[0.55rem] font-bold ${ownerColor && rent ? 'text-red-400' : 'text-gray-300'} shadow-inner whitespace-nowrap`}>
-              {ownerColor && rent 
-                ? `$${rent[houses || 0]}` 
-                : (name === 'Money Tax' ? '10% Cash' : (name === 'Property Tax' ? '5% Assets' : `$${price}`))}
+            <div className={`bg-[#111118]/80 px-1 py-0.5 rounded-sm border border-white/10 text-[0.55rem] font-bold text-gray-300 shadow-inner whitespace-nowrap`}>
+              {name === 'Money Tax' ? '10% Cash' : (name === 'Property Tax' ? '5% Assets' : `$${price}`)}
             </div>
           </div>
         ) : (
