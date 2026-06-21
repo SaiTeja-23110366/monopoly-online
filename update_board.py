@@ -20,51 +20,51 @@ export const SQUARES = [
   { name: 'Jail', fullName: 'Jail', type: 'corner' }, // 14
   
   // Left Edge physically (15 to 27) + corner 28
-  { name: 'FRA', fullName: 'Frankfurt', type: 'property', color: '#FFA500', price: 180, flagCode: 'de' },
-  { name: 'MUN', fullName: 'Munich', type: 'property', color: '#FFA500', price: 180, flagCode: 'de' },
+  { name: 'MUM', fullName: 'Mumbai', type: 'property', color: '#FFA500', price: 180, flagCode: 'in' },
+  { name: 'DEL', fullName: 'Delhi', type: 'property', color: '#FFA500', price: 180, flagCode: 'in' },
   { name: 'Chance', fullName: 'Chance', type: 'chance' },
-  { name: 'BER', fullName: 'Berlin', type: 'property', color: '#FFA500', price: 200, flagCode: 'de' },
-  { name: 'PAR', fullName: 'Paris', type: 'property', color: '#FF0000', price: 220, flagCode: 'fr' },
-  { name: 'TOU', fullName: 'Toulouse', type: 'property', color: '#FF0000', price: 220, flagCode: 'fr' },
+  { name: 'BAN', fullName: 'Bangalore', type: 'property', color: '#FFA500', price: 200, flagCode: 'in' },
+  { name: 'SYD', fullName: 'Sydney', type: 'property', color: '#FF0000', price: 220, flagCode: 'au' },
+  { name: 'MEL', fullName: 'Melbourne', type: 'property', color: '#FF0000', price: 220, flagCode: 'au' },
   { name: 'Airport 2', fullName: 'Airport 2', type: 'railroad', price: 200 },
-  { name: 'LYO', fullName: 'Lyon', type: 'property', color: '#FF0000', price: 240, flagCode: 'fr' },
-  { name: 'SHA', fullName: 'Shanghai', type: 'property', color: '#FFFF00', price: 260, flagCode: 'cn' },
+  { name: 'BRI', fullName: 'Brisbane', type: 'property', color: '#FF0000', price: 240, flagCode: 'au' },
+  { name: 'CAP', fullName: 'Cape Town', type: 'property', color: '#FFFF00', price: 260, flagCode: 'za' },
   { name: 'Chest', fullName: 'Chest', type: 'chest' },
-  { name: 'BEI', fullName: 'Beijing', type: 'property', color: '#FFFF00', price: 260, flagCode: 'cn' },
-  { name: 'SHE', fullName: 'Shenzhen', type: 'property', color: '#FFFF00', price: 280, flagCode: 'cn' },
+  { name: 'JHB', fullName: 'Johannesburg', type: 'property', color: '#FFFF00', price: 260, flagCode: 'za' },
+  { name: 'DUR', fullName: 'Durban', type: 'property', color: '#FFFF00', price: 280, flagCode: 'za' },
   { name: 'Mine 2', fullName: 'Mine 2', type: 'utility', price: 400 },
   { name: 'Vacation', fullName: 'Vacation', type: 'corner' }, // 28
   
   // Top (29 to 41) + corner 42
-  { name: 'LON', fullName: 'London', type: 'property', color: '#008000', price: 300, flagCode: 'gb' },
-  { name: 'MAN', fullName: 'Manchester', type: 'property', color: '#008000', price: 300, flagCode: 'gb' },
+  { name: 'FRA', fullName: 'Frankfurt', type: 'property', color: '#008000', price: 300, flagCode: 'de' },
+  { name: 'MUN', fullName: 'Munich', type: 'property', color: '#008000', price: 300, flagCode: 'de' },
   { name: 'Risk', fullName: 'Risk', type: 'chance' },
-  { name: 'LIV', fullName: 'Liverpool', type: 'property', color: '#008000', price: 320, flagCode: 'gb' },
-  { name: 'NYC', fullName: 'New York', type: 'property', color: '#00008B', price: 350, flagCode: 'us' },
+  { name: 'BER', fullName: 'Berlin', type: 'property', color: '#008000', price: 320, flagCode: 'de' },
+  { name: 'PAR', fullName: 'Paris', type: 'property', color: '#00008B', price: 350, flagCode: 'fr' },
   { name: 'Airport 3', fullName: 'Airport 3', type: 'railroad', price: 200 },
-  { name: 'SFO', fullName: 'San Francisco', type: 'property', color: '#00008B', price: 350, flagCode: 'us' },
-  { name: 'CHI', fullName: 'Chicago', type: 'property', color: '#00008B', price: 400, flagCode: 'us' },
+  { name: 'TOU', fullName: 'Toulouse', type: 'property', color: '#00008B', price: 350, flagCode: 'fr' },
+  { name: 'LYO', fullName: 'Lyon', type: 'property', color: '#00008B', price: 400, flagCode: 'fr' },
   { name: 'Mine 3', fullName: 'Mine 3', type: 'utility', price: 400 },
-  { name: 'TOK', fullName: 'Tokyo', type: 'property', color: '#800080', price: 420, flagCode: 'jp' },
-  { name: 'OSA', fullName: 'Osaka', type: 'property', color: '#800080', price: 420, flagCode: 'jp' },
+  { name: 'SHA', fullName: 'Shanghai', type: 'property', color: '#800080', price: 420, flagCode: 'cn' },
+  { name: 'BEI', fullName: 'Beijing', type: 'property', color: '#800080', price: 420, flagCode: 'cn' },
   { name: 'Property Tax', fullName: 'Property Tax', type: 'tax', price: 200 },
-  { name: 'KYO', fullName: 'Kyoto', type: 'property', color: '#800080', price: 450, flagCode: 'jp' },
+  { name: 'SHE', fullName: 'Shenzhen', type: 'property', color: '#800080', price: 450, flagCode: 'cn' },
   { name: 'Go to Jail', fullName: 'Go to Jail', type: 'corner' }, // 42
   
   // Right Edge physically (43 to 55)
-  { name: 'MUM', fullName: 'Mumbai', type: 'property', color: '#008080', price: 480, flagCode: 'in' },
-  { name: 'DEL', fullName: 'Delhi', type: 'property', color: '#008080', price: 480, flagCode: 'in' },
+  { name: 'TOK', fullName: 'Tokyo', type: 'property', color: '#008080', price: 480, flagCode: 'jp' },
+  { name: 'OSA', fullName: 'Osaka', type: 'property', color: '#008080', price: 480, flagCode: 'jp' },
   { name: 'Airport 4', fullName: 'Airport 4', type: 'railroad', price: 200 },
-  { name: 'BAN', fullName: 'Bangalore', type: 'property', color: '#008080', price: 500, flagCode: 'in' },
+  { name: 'KYO', fullName: 'Kyoto', type: 'property', color: '#008080', price: 500, flagCode: 'jp' },
   { name: 'Chance', fullName: 'Chance', type: 'chance' },
-  { name: 'SYD', fullName: 'Sydney', type: 'property', color: '#800000', price: 520, flagCode: 'au' },
-  { name: 'MEL', fullName: 'Melbourne', type: 'property', color: '#800000', price: 520, flagCode: 'au' },
+  { name: 'LON', fullName: 'London', type: 'property', color: '#800000', price: 520, flagCode: 'gb' },
+  { name: 'MAN', fullName: 'Manchester', type: 'property', color: '#800000', price: 520, flagCode: 'gb' },
   { name: 'Mine 4', fullName: 'Mine 4', type: 'utility', price: 400 },
-  { name: 'BRI', fullName: 'Brisbane', type: 'property', color: '#800000', price: 550, flagCode: 'au' },
-  { name: 'CAP', fullName: 'Cape Town', type: 'property', color: '#FFD700', price: 600, flagCode: 'za' },
+  { name: 'LIV', fullName: 'Liverpool', type: 'property', color: '#800000', price: 550, flagCode: 'gb' },
+  { name: 'NYC', fullName: 'New York', type: 'property', color: '#FFD700', price: 600, flagCode: 'us' },
   { name: 'Risk', fullName: 'Risk', type: 'chance' },
-  { name: 'JHB', fullName: 'Johannesburg', type: 'property', color: '#FFD700', price: 600, flagCode: 'za' },
-  { name: 'DUR', fullName: 'Durban', type: 'property', color: '#FFD700', price: 650, flagCode: 'za' }
+  { name: 'SFO', fullName: 'San Francisco', type: 'property', color: '#FFD700', price: 600, flagCode: 'us' },
+  { name: 'CHI', fullName: 'Chicago', type: 'property', color: '#FFD700', price: 650, flagCode: 'us' }
 ].map((sq, i) => {
   if (sq.type === 'railroad' || sq.type === 'utility') return { ...sq, id: i, rent: [20, 75, 200, 300] };
   if (sq.type !== 'property' || !sq.price) return { ...sq, id: i };
