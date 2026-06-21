@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { socket } from './socket';
 import { Lobby } from './components/Lobby';
 import { Board } from './components/Board';
+import { PropertyInfoCard } from './components/PropertyInfoCard';
 import { TradeModal } from './components/TradeModal';
 import { ViewTradeModal } from './components/ViewTradeModal';
 import { SQUARES } from './constants/boardData';
@@ -20,7 +21,7 @@ export const App: React.FC = () => {
   const [playerId] = useState(getStoredPlayerId);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [showPopups, setShowPopups] = useState(true);
-  // Removed unused vars
+  const [viewingSquareIndex, setViewingSquareIndex] = useState<number | null>(null);
   
   // Trading Modal State
   const [isTradeModalOpen, setIsTradeModalOpen] = useState(false);
@@ -198,14 +199,20 @@ export const App: React.FC = () => {
   };
 
   const handleSquareClick = (index: number) => {
-    if (!isMyTurn) return;
-    if (isAwaitingSabotage) {
-       socket.emit('execute_sabotage', gameState.roomCode, index);
-    } else if (isAwaitingProtection) {
-       socket.emit('execute_protection', gameState.roomCode, index);
-    } else if (isAwaitingDebtResolution) {
-       socket.emit('sell_property_to_bank', gameState.roomCode, index);
+    if (isMyTurn) {
+      if (isAwaitingSabotage) {
+         socket.emit('execute_sabotage', gameState.roomCode, index);
+         return;
+      } else if (isAwaitingProtection) {
+         socket.emit('execute_protection', gameState.roomCode, index);
+         return;
+      } else if (isAwaitingDebtResolution) {
+         socket.emit('sell_property_to_bank', gameState.roomCode, index);
+         return;
+      }
     }
+    // View property details if not making an active move
+    setViewingSquareIndex(index);
   };
 
   const isJailDecision = isMyTurn && currentPlayer?.inJail && !gameState.hasRolled;
@@ -229,7 +236,11 @@ export const App: React.FC = () => {
   const STARTING_CASH_OPTIONS = [1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000];
 
   let centerContent: React.ReactNode = null;
-  if (isAwaitingBuy && isMyTurn && buySquare && propState) {
+  if (viewingSquareIndex !== null && !isAwaitingBuy && !isAwaitingFlight && !isJailDecision) {
+    centerContent = (
+      <PropertyInfoCard square={SQUARES[viewingSquareIndex]} onClose={() => setViewingSquareIndex(null)} />
+    );
+  } else if (isAwaitingBuy && isMyTurn && buySquare && propState) {
     centerContent = (
       <div className="bg-[#161622] border-2 border-indigo-500 p-6 md:p-8 rounded-2xl w-[90vw] md:w-full max-w-md shadow-[0_0_50px_rgba(99,102,241,0.5)] text-center transform scale-105 transition-transform animate-in fade-in zoom-in duration-300 pointer-events-auto max-h-[80vh] overflow-y-auto">
         <h2 className="text-3xl font-black mb-2 text-white tracking-widest uppercase">{buySquare.name}</h2>
@@ -567,10 +578,10 @@ export const App: React.FC = () => {
         )}
         
         {/* Board Area */}
-        <div className={`flex-1 relative items-center justify-center overflow-hidden ${activeTab === 'board' ? 'flex' : 'hidden md:flex'}`}>
+        <div className="w-full h-[60vh] md:h-full relative overflow-hidden bg-[#0a0a0f]">
           <Board 
             gameState={gameState} 
-            onSquareClick={(gameState.awaitingSabotage || gameState.awaitingProtection) && isMyTurn ? handleSquareClick : undefined}
+            onSquareClick={handleSquareClick}
             onRollDice={isMyTurn && !gameState.hasRolled && gameState.state === 'playing' ? handleRollDice : undefined}
             timeLeft={isMyTurn && activeTab === 'board' ? timeLeft : null}
             centerContent={centerContent}
