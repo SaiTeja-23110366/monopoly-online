@@ -192,7 +192,7 @@ io.on('connection', (socket) => {
       } else if (game.state.awaitingFlightDecision !== null) {
          game.setDeadline(15);
       } else if (game.state.activeCard !== null) {
-         game.setDeadline(15);
+         game.setDeadline(3);
       } else if (game.state.awaitingBuyDecision !== null) {
          game.setDeadline(15);
       } else {

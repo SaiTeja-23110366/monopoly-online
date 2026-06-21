@@ -4,7 +4,6 @@ import { Lobby } from './components/Lobby';
 import { Board } from './components/Board';
 import { TradeModal } from './components/TradeModal';
 import { ViewTradeModal } from './components/ViewTradeModal';
-import { CardModal } from './components/CardModal';
 import { SQUARES } from './constants/boardData';
 import type { GameState, TradeOffer } from '../../shared/types';
 
@@ -180,7 +179,6 @@ export const App: React.FC = () => {
   const isAwaitingFlight = showPopups && gameState.awaitingFlightDecision !== null && gameState.awaitingFlightDecision !== undefined;
   const isAwaitingSabotage = showPopups && gameState.awaitingSabotage;
   const isAwaitingProtection = showPopups && gameState.awaitingProtection;
-  const showActiveCard = showPopups && gameState.activeCard !== null;
   const isBankrupt = currentPlayer?.status === 'bankrupt';
 
   let validFlightDestinations: number[] = [];
@@ -422,8 +420,7 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Card Modal */}
-      {showActiveCard && <CardModal gameState={gameState} playerId={playerId} />}
+      {/* Card logic is now handled in Board.tsx center area */}
 
       {/* Jail Decision Modal */}
       {isJailDecision && !gameState.activeCard && (

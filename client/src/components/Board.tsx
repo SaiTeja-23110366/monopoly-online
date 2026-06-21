@@ -145,8 +145,26 @@ export const Board: React.FC<BoardProps> = ({ gameState, onSquareClick, onRollDi
                 </div>
               )}
               
-              {/* Dice & Controls - Hidden during Rent Animations */}
-              {(!gameState?.activeAnimation || gameState.activeAnimation.type !== 'rent') && gameState?.state === 'playing' && (
+              {/* Card Animation */}
+              {gameState?.activeCard && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center animate-in zoom-in fade-in duration-500 z-[100]">
+                  <div className={`w-72 sm:w-80 h-96 p-6 rounded-2xl flex flex-col items-center justify-center shadow-[0_20px_50px_rgba(0,0,0,0.8)] border-[3px] text-center
+                    ${gameState.activeCard.deck === 'chest' ? 'bg-gradient-to-br from-amber-200 to-yellow-600 border-yellow-300' : ''}
+                    ${gameState.activeCard.deck === 'chance' ? 'bg-gradient-to-br from-orange-300 to-red-500 border-orange-200' : ''}
+                    ${gameState.activeCard.deck === 'risk' ? 'bg-gradient-to-br from-purple-600 to-gray-900 border-purple-400' : ''}
+                  `}>
+                    <h2 className="text-3xl font-black text-white drop-shadow-md mb-6 uppercase tracking-widest">
+                      {gameState.activeCard.deck}
+                    </h2>
+                    <p className="text-xl sm:text-2xl font-bold text-white drop-shadow-sm leading-snug">
+                      {gameState.activeCard.text}
+                    </p>
+                  </div>
+                </div>
+              )}
+              
+              {/* Dice & Controls - Hidden during Rent & Card Animations */}
+              {(!gameState?.activeAnimation || gameState.activeAnimation.type !== 'rent') && !gameState?.activeCard && gameState?.state === 'playing' && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-auto">
                   <DiceContainer 
                     diceValues={gameState.diceValues} 

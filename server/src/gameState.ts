@@ -272,7 +272,7 @@ export class MonopolyGame {
         }
 
         if (this.state.activeCard !== null) {
-          this.setDeadline(15);
+          this.setDeadline(3);
           if (onComplete) onComplete();
           return; // Do not end turn, waiting for card acknowledgment
         }
@@ -371,7 +371,7 @@ export class MonopolyGame {
           payerId: player.id,
           payeeId: owner.id
         };
-        this.setDeadline(4);
+        this.setDeadline(3);
       }
       
       const isInDebt = this.checkDebt(player.id);
