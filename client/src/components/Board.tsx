@@ -65,9 +65,10 @@ interface BoardProps {
   onSquareClick?: (index: number) => void;
   onRollDice?: () => void;
   timeLeft?: number | null;
+  centerContent?: React.ReactNode;
 }
 
-export const Board: React.FC<BoardProps> = ({ gameState, onSquareClick, onRollDice, timeLeft }) => {
+export const Board: React.FC<BoardProps> = ({ gameState, onSquareClick, onRollDice, timeLeft, centerContent }) => {
   return (
     <div className="flex flex-col items-center justify-center w-full h-full bg-[#0a0a0f] overflow-hidden">
       <TransformWrapper
@@ -163,8 +164,15 @@ export const Board: React.FC<BoardProps> = ({ gameState, onSquareClick, onRollDi
                 </div>
               )}
               
-              {/* Dice & Controls - Hidden during Rent & Card Animations */}
-              {(!gameState?.activeAnimation || gameState.activeAnimation.type !== 'rent') && !gameState?.activeCard && gameState?.state === 'playing' && (
+              {/* Custom Center Content from App.tsx */}
+              {centerContent && (
+                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-auto z-[90]">
+                   {centerContent}
+                 </div>
+              )}
+              
+              {/* Dice & Controls - Hidden during Rent, Cards & Custom Center Content */}
+              {(!gameState?.activeAnimation || gameState.activeAnimation.type !== 'rent') && !gameState?.activeCard && !centerContent && gameState?.state === 'playing' && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-auto">
                   <DiceContainer 
                     diceValues={gameState.diceValues} 
