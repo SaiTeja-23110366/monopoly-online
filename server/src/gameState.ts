@@ -586,11 +586,11 @@ export class MonopolyGame {
     } else if (card.action === 'sabotage') {
        needsTarget = true;
        this.state.awaitingSabotage = true;
-       this.setDeadline(15);
+       this.setDeadline(45);
     } else if (card.action === 'protect') {
        needsTarget = true;
        this.state.awaitingProtection = true;
-       this.setDeadline(15);
+       this.setDeadline(45);
     }
 
     this.state.activeCard = null;
