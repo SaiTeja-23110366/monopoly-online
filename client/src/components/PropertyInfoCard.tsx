@@ -96,15 +96,23 @@ export const PropertyInfoCard: React.FC<PropertyInfoCardProps> = ({ square, onCl
             </>
           )}
 
-          {isUtility && (
+          {isUtility && square.rent && (
             <>
               <div className="flex justify-between items-center text-gray-200">
-                <span>with 1 utility</span>
-                <span className="font-medium text-lg"><span className="text-gray-500 mr-1"></span>4x roll</span>
+                <span>with 1 mine</span>
+                <span className="font-medium text-lg"><span className="text-gray-500 mr-1">$</span>{square.rent[0]}</span>
               </div>
               <div className="flex justify-between items-center text-gray-200">
-                <span>with 2 utilities</span>
-                <span className="font-medium text-lg"><span className="text-gray-500 mr-1"></span>10x roll</span>
+                <span>with 2 mines</span>
+                <span className="font-medium text-lg"><span className="text-gray-500 mr-1">$</span>{square.rent[1]}</span>
+              </div>
+              <div className="flex justify-between items-center text-gray-200">
+                <span>with 3 mines</span>
+                <span className="font-medium text-lg"><span className="text-gray-500 mr-1">$</span>{square.rent[2]}</span>
+              </div>
+              <div className="flex justify-between items-center text-gray-200">
+                <span>with 4 mines</span>
+                <span className="font-medium text-lg"><span className="text-gray-500 mr-1">$</span>{square.rent[3]}</span>
               </div>
             </>
           )}
