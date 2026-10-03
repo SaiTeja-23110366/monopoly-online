@@ -29,14 +29,7 @@ const roomManager = new RoomManager();
 roomManager.on('game_update', (roomCode, state) => {
   io.to(roomCode).emit('game_state_update', state);
 });
-import Redis from 'ioredis';
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-const redis = new Redis(redisUrl, {
-  family: 0,
-  tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
-  retryStrategy: (times) => Math.min(times * 50, 2000),
-});
-redis.on('error', (err) => console.error('[Redis Error]', err));
+
 
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
@@ -64,21 +57,31 @@ io.on('connection', (socket) => {
   });
 
   socket.on('create_room', async (callback) => {
-    const roomCode = await roomManager.createRoom();
-    callback({ roomCode });
+    try {
+      const roomCode = await roomManager.createRoom();
+      callback({ roomCode });
+    } catch (e) {
+      console.error('[create_room Error]', e);
+      socket.emit('error', 'Failed to create room');
+    }
   });
 
   socket.on('join_room', async (roomCode: string, playerId: string, playerName: string, color: string) => {
-    const joined = await roomManager.joinRoom(roomCode, playerId, socket.id, playerName, color);
-    if (joined) {
-      socket.data.roomCode = roomCode;
-      socket.join(roomCode);
-      const game = await roomManager.getGame(roomCode);
-      if (game) {
-        io.to(roomCode).emit('game_state_update', game.state);
+    try {
+      const joined = await roomManager.joinRoom(roomCode, playerId, socket.id, playerName, color);
+      if (joined) {
+        socket.data.roomCode = roomCode;
+        socket.join(roomCode);
+        const game = await roomManager.getGame(roomCode);
+        if (game) {
+          io.to(roomCode).emit('game_state_update', game.state);
+        }
+      } else {
+        socket.emit('error', 'Room not found or game already started');
       }
-    } else {
-      socket.emit('error', 'Room not found or game already started');
+    } catch (e) {
+      console.error('[join_room Error]', e);
+      socket.emit('error', 'Failed to join room');
     }
   });
 
@@ -119,11 +122,16 @@ io.on('connection', (socket) => {
   });
 
   socket.on('start_game', async (roomCode: string) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    if (game.startGame()) {
-      await roomManager.saveGame(game, true);
-      io.to(roomCode).emit('game_state_update', game.state);
+    try {
+      const game = await roomManager.getGame(roomCode);
+      if (!game) return;
+      if (game.startGame()) {
+        await roomManager.saveGame(game, true);
+        io.to(roomCode).emit('game_state_update', game.state);
+      }
+    } catch (e) {
+      console.error('[start_game Error]', e);
+      socket.emit('error', 'Failed to start game');
     }
   });
 
@@ -219,18 +227,22 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', async () => {
     console.log(`User disconnected: ${socket.id}`);
-    const roomCode = socket.data.roomCode;
-    if (roomCode) {
-      // Check if room is empty
-      const room = io.sockets.adapter.rooms.get(roomCode);
-      if (!room || room.size === 0) {
-        const game = await roomManager.getGame(roomCode);
-        if (game) {
-          await roomManager.saveGame(game, true);
-          roomManager.clearMemory(roomCode);
-          console.log(`Room ${roomCode} is empty. Saved to Redis and cleared from memory.`);
+    try {
+      const roomCode = socket.data.roomCode;
+      if (roomCode) {
+        // Check if room is empty
+        const room = io.sockets.adapter.rooms.get(roomCode);
+        if (!room || room.size === 0) {
+          const game = await roomManager.getGame(roomCode);
+          if (game) {
+            await roomManager.saveGame(game, true);
+            roomManager.clearMemory(roomCode);
+            console.log(`Room ${roomCode} is empty. Saved to Redis and cleared from memory.`);
+          }
         }
       }
+    } catch (e) {
+      console.error('[disconnect Error]', e);
     }
   });
 });

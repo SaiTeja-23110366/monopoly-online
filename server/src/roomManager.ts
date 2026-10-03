@@ -6,6 +6,7 @@ const redis = new Redis(redisUrl, {
   family: 0,
   tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
   retryStrategy: (times) => Math.min(times * 50, 2000),
+  enableOfflineQueue: false,
 });
 redis.on('error', (err) => console.error('[Redis Error]', err));
 
@@ -15,18 +16,22 @@ export class RoomManager extends EventEmitter {
   private timeouts: Map<string, NodeJS.Timeout> = new Map();
 
   private handleTimeout = async (roomCode: string) => {
-    const game = await this.getGame(roomCode);
-    if (!game || !game.state.turnDeadline || Date.now() < game.state.turnDeadline) return;
-    
-    game.executeTimeout(
-      () => this.emit('game_update', roomCode, game.state),
-      async () => {
-        await this.saveGame(game, true);
-        this.emit('game_update', roomCode, game.state);
-      }
-    );
-    await this.saveGame(game, true);
-    this.emit('game_update', roomCode, game.state);
+    try {
+      const game = await this.getGame(roomCode);
+      if (!game || !game.state.turnDeadline || Date.now() < game.state.turnDeadline) return;
+      
+      game.executeTimeout(
+        () => this.emit('game_update', roomCode, game.state),
+        async () => {
+          await this.saveGame(game, true);
+          this.emit('game_update', roomCode, game.state);
+        }
+      );
+      await this.saveGame(game, true);
+      this.emit('game_update', roomCode, game.state);
+    } catch (e) {
+      console.error('[Timeout Error]', e);
+    }
   };
 
   private memoryCache: Map<string, MonopolyGame> = new Map();
@@ -45,7 +50,13 @@ export class RoomManager extends EventEmitter {
     }
 
     // Fallback to Redis
-    const raw = await redis.get(`room:${roomCode}`);
+    let raw;
+    try {
+      raw = await redis.get(`room:${roomCode}`);
+    } catch (e) {
+      console.error('[Redis Get Error]', e);
+      return null;
+    }
     if (!raw) return null;
     const state = JSON.parse(raw);
     const game = new MonopolyGame(roomCode);
@@ -57,7 +68,11 @@ export class RoomManager extends EventEmitter {
   async saveGame(game: MonopolyGame, forceRedis: boolean = false): Promise<void> {
     this.memoryCache.set(game.roomCode, game);
     if (forceRedis) {
-      await redis.set(`room:${game.roomCode}`, JSON.stringify(game.state), 'EX', 86400);
+      try {
+        await redis.set(`room:${game.roomCode}`, JSON.stringify(game.state), 'EX', 86400);
+      } catch (e) {
+        console.error('[Redis Set Error]', e);
+      }
     }
     
     if (game.state.turnDeadline) {
