@@ -7,8 +7,28 @@ const redis = new Redis(redisUrl, {
   tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
   retryStrategy: (times) => Math.min(times * 50, 2000),
 });
+redis.on('error', (err) => console.error('[Redis Error]', err));
 
-export class RoomManager {
+import { EventEmitter } from 'events';
+
+export class RoomManager extends EventEmitter {
+  private timeouts: Map<string, NodeJS.Timeout> = new Map();
+
+  private handleTimeout = async (roomCode: string) => {
+    const game = await this.getGame(roomCode);
+    if (!game || !game.state.turnDeadline || Date.now() < game.state.turnDeadline) return;
+    
+    game.executeTimeout(
+      () => this.emit('game_update', roomCode, game.state),
+      async () => {
+        await this.saveGame(game, true);
+        this.emit('game_update', roomCode, game.state);
+      }
+    );
+    await this.saveGame(game, true);
+    this.emit('game_update', roomCode, game.state);
+  };
+
   private memoryCache: Map<string, MonopolyGame> = new Map();
 
   async createRoom(): Promise<string> {
@@ -35,12 +55,21 @@ export class RoomManager {
   }
 
   async saveGame(game: MonopolyGame, forceRedis: boolean = false): Promise<void> {
-    // Always update memory
     this.memoryCache.set(game.roomCode, game);
-
-    // Conditionally sync to Redis to save commands
     if (forceRedis) {
       await redis.set(`room:${game.roomCode}`, JSON.stringify(game.state), 'EX', 86400);
+    }
+    
+    if (game.state.turnDeadline) {
+      if (this.timeouts.has(game.roomCode)) {
+        clearTimeout(this.timeouts.get(game.roomCode));
+      }
+      const delay = game.state.turnDeadline - Date.now();
+      if (delay > 0) {
+        this.timeouts.set(game.roomCode, setTimeout(() => this.handleTimeout(game.roomCode), delay));
+      } else {
+        this.timeouts.delete(game.roomCode);
+      }
     }
   }
 

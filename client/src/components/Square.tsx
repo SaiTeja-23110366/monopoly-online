@@ -20,7 +20,7 @@ interface SquareProps {
   flagCode?: string;
 }
 
-export const Square: React.FC<SquareProps> = ({ index, name, type, color, price, players = [], turnIndex, allPlayers = [], ownerColor, houses = 0, vacationJackpot = 0, protected: isProtected, flagCode }) => {
+export const Square: React.FC<SquareProps> = React.memo(({ index, name, type, color, price, players = [], turnIndex, allPlayers = [], ownerColor, houses = 0, vacationJackpot = 0, protected: isProtected, flagCode }) => {
   // Determine layout based on side of the board for upright text
   let layoutClass = 'flex-col';
   let colorBarClass = 'w-full h-4 mb-1';
@@ -183,4 +183,4 @@ export const Square: React.FC<SquareProps> = ({ index, name, type, color, price,
       </div>
     </div>
   );
-};
+});

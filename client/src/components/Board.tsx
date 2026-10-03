@@ -6,20 +6,31 @@ import { Dices, Clock } from 'lucide-react';
 const DiceContainer = ({ diceValues, isRolling }: { diceValues: [number, number], isRolling: boolean }) => {
   const [displayValues, setDisplayValues] = useState<[number, number]>(diceValues);
 
+
   useEffect(() => {
-    let interval: any;
-    if (isRolling) {
-      interval = setInterval(() => {
+    let animationFrameId: number;
+    let lastUpdate = 0;
+    
+    const animate = (timestamp: number) => {
+      if (timestamp - lastUpdate > 100) {
         setDisplayValues([
           Math.floor(Math.random() * 6) + 1,
           Math.floor(Math.random() * 6) + 1,
         ]);
-      }, 100);
+        lastUpdate = timestamp;
+      }
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    if (isRolling) {
+      animationFrameId = requestAnimationFrame(animate);
     } else {
       setDisplayValues(diceValues);
     }
-    return () => clearInterval(interval);
+    
+    return () => cancelAnimationFrame(animationFrameId);
   }, [isRolling, diceValues]);
+
 
   // If dice are 0,0 (start of game), maybe show 1,1
   const d1 = displayValues[0] || 1;
@@ -64,11 +75,86 @@ interface BoardProps {
   gameState?: GameState | null;
   onSquareClick?: (index: number) => void;
   onRollDice?: () => void;
-  timeLeft?: number | null;
   centerContent?: React.ReactNode;
+  playerId?: string;
 }
 
-export const Board: React.FC<BoardProps> = ({ gameState, onSquareClick, onRollDice, timeLeft, centerContent }) => {
+export const TurnTimer = ({ gameState, playerId, variant }: { gameState: GameState, playerId?: string, variant: 'mobile' | 'panel' | 'board' }) => {
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!gameState?.turnDeadline || gameState.state !== 'playing') {
+      setTimeLeft(null);
+      return;
+    }
+    const updateTimer = () => {
+      const remaining = Math.max(0, Math.floor((gameState.turnDeadline! - Date.now()) / 1000));
+      setTimeLeft(remaining);
+    };
+    updateTimer();
+    const intervalId = setInterval(updateTimer, 500);
+    return () => clearInterval(intervalId);
+  }, [gameState?.turnDeadline, gameState?.state, gameState?.turnIndex, playerId, gameState?.roomCode]);
+
+  if (timeLeft === null) return null;
+
+  if (variant === 'mobile') {
+    return (
+      <div className="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-lg">
+        <span className={`font-mono font-black ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-green-400'}`}>
+          {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+        </span>
+      </div>
+    );
+  }
+
+  if (variant === 'panel') {
+    return (
+      <div className="flex items-center justify-center gap-2 mb-3 bg-black/40 py-2 px-4 rounded-lg border border-white/5 mx-auto w-max">
+        <span className="text-gray-400 font-bold uppercase tracking-wider text-xs">Time Left:</span>
+        <span className={`text-lg font-mono font-black ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-green-400'}`}>
+          {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full border border-white/10">
+      <Clock size={16} className={timeLeft <= 5 ? 'text-red-500' : 'text-gray-400'} />
+      <span className={`font-mono font-black text-lg ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-green-400'}`}>
+        {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+      </span>
+    </div>
+  );
+};
+
+export const Board: React.FC<BoardProps> = React.memo(({ gameState, onSquareClick, onRollDice, centerContent, playerId }) => {
+  const playersBySquare = React.useMemo(() => {
+    const map: Record<number, any[]> = {};
+    gameState?.players.forEach(p => {
+      if (p.status !== 'bankrupt') {
+        if (!map[p.position]) map[p.position] = [];
+        map[p.position].push(p);
+      }
+    });
+    return map;
+  }, [gameState?.players]);
+
+  const ownedCountByType = React.useMemo(() => {
+     const counts: Record<string, Record<string, number>> = {};
+     if (gameState?.properties) {
+        Object.values(gameState.properties).forEach(p => {
+           if (p.ownerId) {
+             const type = SQUARES[p.id].type;
+             if (!counts[p.ownerId]) counts[p.ownerId] = {};
+             counts[p.ownerId][type] = (counts[p.ownerId][type] || 0) + 1;
+           }
+        });
+     }
+     return counts;
+  }, [gameState?.properties]);
+
   return (
     <div className="flex flex-col items-center justify-center w-full h-full bg-[#0a0a0f] overflow-hidden">
       <TransformWrapper
@@ -94,16 +180,14 @@ export const Board: React.FC<BoardProps> = ({ gameState, onSquareClick, onRollDi
             {/* Render 56 Squares */}
             {SQUARES.map((sq, i) => {
               const style = getGridPosition(i);
-              const playersOnSquare = gameState?.players.filter(p => p.position === i && p.status !== 'bankrupt') || [];
+              const playersOnSquare = playersBySquare[i] || [];
               const propState = gameState?.properties?.[i];
               const ownerId = propState?.ownerId;
               const ownerColor = ownerId ? gameState?.players.find(p => p.id === ownerId)?.color : undefined;
               
               let houses = propState?.houses || 0;
               if (ownerId && (sq.type === 'railroad' || sq.type === 'utility')) {
-                 const ownedCount = Object.values(gameState!.properties).filter(
-                    p => p.ownerId === ownerId && SQUARES[p.id].type === sq.type
-                 ).length;
+                 const ownedCount = ownedCountByType[ownerId]?.[sq.type] || 0;
                  houses = Math.max(0, ownedCount - 1);
               }
               return (
@@ -190,13 +274,8 @@ export const Board: React.FC<BoardProps> = ({ gameState, onSquareClick, onRollDi
                         Roll the dice
                       </button>
                       
-                      {timeLeft !== null && timeLeft !== undefined && (
-                        <div className="mt-6 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-4 py-2 rounded-full border border-white/10">
-                          <Clock size={16} className={timeLeft <= 5 ? 'text-red-500' : 'text-gray-400'} />
-                          <span className={`font-mono font-black text-lg ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-green-400'}`}>
-                            {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
-                          </span>
-                        </div>
+                      {gameState && playerId && (
+                        <TurnTimer gameState={gameState} playerId={playerId} variant="board" />
                       )}
                     </div>
                   )}
@@ -209,4 +288,4 @@ export const Board: React.FC<BoardProps> = ({ gameState, onSquareClick, onRollDi
       </TransformWrapper>
     </div>
   );
-};
+});

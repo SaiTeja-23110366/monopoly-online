@@ -203,16 +203,12 @@ export class MonopolyGame {
 
   movePlayer(player: Player, spaces: number, onStep?: () => void, onComplete?: () => void) {
     this.state.isAnimatingMovement = true;
-    let spacesMoved = 0;
     
-    // Set a safety deadline in case interval hangs, though it shouldn't
-    this.setDeadline(spaces * 0.3 + 5);
-
-    const interval = setInterval(() => {
-      spacesMoved++;
+    // Animate instantly on server, clients handle their own animation logic if needed
+    for (let spacesMoved = 1; spacesMoved <= spaces; spacesMoved++) {
       player.position = (player.position + 1) % 56;
       
-      // Pass Start Logic happens precisely when crossing 0
+      // Pass Start Logic
       if (player.position === 0) {
         const isLandingOnStart = spacesMoved === spaces;
         const passStartMoney = isLandingOnStart ? 1000 : 750;
@@ -239,54 +235,48 @@ export class MonopolyGame {
             this.log(`${player.name} ${isLandingOnStart ? 'landed on' : 'passed'} Start, collected $${passStartMoney}, and gained a flight chance.`);
         }
       }
-
+      
       if (onStep) onStep();
+    }
 
-      // When movement finishes
-      if (spacesMoved === spaces) {
-        clearInterval(interval);
-        this.state.isAnimatingMovement = false;
-        
-        const sq = BOARD_DATA[player.position];
-        this.log(`${player.name} landed on ${sq.name}.`);
+    this.state.isAnimatingMovement = false;
+    
+    const sq = BOARD_DATA[player.position];
+    this.log(`${player.name} landed on ${sq.name}.`);
 
-        const needsBuyDecision = this.handleLanding(player, sq);
-        
-        // If rent animation was triggered, it sets its own 4s deadline in handleLanding
-        if (this.state.activeAnimation) {
-          if (onComplete) onComplete();
-          return;
-        }
+    const needsBuyDecision = this.handleLanding(player, sq);
+    
+    if (this.state.activeAnimation) {
+      if (onComplete) onComplete();
+      return;
+    }
 
-        // Check if debt resolution or flight decision was triggered during landing
-        if (this.state.awaitingDebtResolution) {
-          this.setDeadline(120);
-          if (onComplete) onComplete();
-          return; // Do not end turn, waiting for player to sell
-        }
+    if (this.state.awaitingDebtResolution) {
+      this.setDeadline(120);
+      if (onComplete) onComplete();
+      return;
+    }
 
-        if (this.state.awaitingFlightDecision !== null) {
-          this.setDeadline(15);
-          if (onComplete) onComplete();
-          return; // Do not end turn, waiting for player to decide on flight
-        }
+    if (this.state.awaitingFlightDecision !== null) {
+      this.setDeadline(15);
+      if (onComplete) onComplete();
+      return;
+    }
 
-        if (this.state.activeCard !== null) {
-          this.setDeadline(3);
-          if (onComplete) onComplete();
-          return; // Do not end turn, waiting for card acknowledgment
-        }
+    if (this.state.activeCard !== null) {
+      this.setDeadline(3);
+      if (onComplete) onComplete();
+      return;
+    }
 
-        if (needsBuyDecision) {
-          this.state.awaitingBuyDecision = player.position;
-          this.setDeadline(15);
-        } else {
-          this.endTurn(player.id);
-        }
-        
-        if (onComplete) onComplete();
-      }
-    }, 250); // 250ms per space
+    if (needsBuyDecision) {
+      this.state.awaitingBuyDecision = player.position;
+      this.setDeadline(15);
+    } else {
+      this.endTurn(player.id);
+    }
+    
+    if (onComplete) onComplete();
   }
 
   handleLanding(player: Player, sq: BoardSquare): boolean {
@@ -705,6 +695,57 @@ export class MonopolyGame {
       }
     }
     return false; // Not in debt
+  }
+
+  
+  executeTimeout(onStep?: () => void, onComplete?: () => void) {
+    const activePlayer = this.getCurrentPlayer();
+    if (!activePlayer) return;
+
+    if (this.state.activeAnimation) {
+      this.state.activeAnimation = undefined;
+      if (this.state.awaitingDebtResolution) {
+         this.setDeadline(120);
+      } else if (this.state.awaitingFlightDecision !== null) {
+         this.setDeadline(15);
+      } else if (this.state.activeCard !== null) {
+         this.setDeadline(3);
+      } else if (this.state.awaitingBuyDecision !== null) {
+         this.setDeadline(15);
+      } else {
+         this.endTurn(activePlayer.id);
+      }
+    } else if (!this.state.hasRolled) {
+      this.rollDice(activePlayer.id, onStep, onComplete);
+    } else if (this.state.awaitingBuyDecision !== null) {
+      this.passProperty(activePlayer.id);
+    } else if (this.state.awaitingFlightDecision !== null) {
+      this.state.awaitingFlightDecision = null;
+      this.endTurn(activePlayer.id);
+    } else if (this.state.awaitingSabotage) {
+      this.state.awaitingSabotage = false;
+      this.endTurn(activePlayer.id);
+    } else if (this.state.awaitingProtection) {
+      this.state.awaitingProtection = false;
+      this.endTurn(activePlayer.id);
+    } else if (this.state.awaitingDebtResolution) {
+      this.checkBankruptcy(activePlayer);
+      this.state.awaitingDebtResolution = null;
+      this.endTurn(activePlayer.id);
+    } else if (this.state.activeCard !== null) {
+      this.acknowledgeCard(activePlayer.id);
+    }
+  }
+
+  
+  checkWinCondition() {
+    const activePlayers = this.state.players.filter(p => p.status === 'active');
+    if (activePlayers.length <= 1 && this.state.players.length > 1) {
+      this.log(`${activePlayers[0]?.name || 'Nobody'} wins the game!`);
+      this.state.state = 'ended';
+      return true;
+    }
+    return false;
   }
 
   checkBankruptcy(player: Player) {

@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import path from 'path';
 import { RoomManager } from './roomManager';
+import { MonopolyGame } from './gameState';
 
 const app = express();
 app.use(cors());
@@ -25,6 +26,9 @@ const io = new Server(server, {
 
 
 const roomManager = new RoomManager();
+roomManager.on('game_update', (roomCode, state) => {
+  io.to(roomCode).emit('game_state_update', state);
+});
 import Redis from 'ioredis';
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 const redis = new Redis(redisUrl, {
@@ -32,6 +36,7 @@ const redis = new Redis(redisUrl, {
   tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
   retryStrategy: (times) => Math.min(times * 50, 2000),
 });
+redis.on('error', (err) => console.error('[Redis Error]', err));
 
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
@@ -77,28 +82,40 @@ io.on('connection', (socket) => {
     }
   });
 
-  const getPlayerId = (game: any, socketId: string) => {
-    return game.state.players.find((p: any) => p.socketId === socketId)?.id;
+  const getPlayerId = (game: MonopolyGame, socketId: string) => {
+    return game.state.players.find(p => p.socketId === socketId)?.id;
   };
 
-  socket.on('change_color', async (roomCode: string, newColor: string) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
-    if (game.changeColor(playerId, newColor)) {
-      await roomManager.saveGame(game);
-      io.to(roomCode).emit('game_state_update', game.state);
-    }
-  });
+  const withGame = (handler: (game: MonopolyGame, playerId: string, ...args: any[]) => void | Promise<void>) => {
+    return async (roomCode: string, ...args: any[]) => {
+      try {
+        const game = await roomManager.getGame(roomCode);
+        if (!game) return;
+        const playerId = getPlayerId(game, socket.id);
+        if (!playerId) return;
+        await handler(game, playerId, ...args);
+        await roomManager.saveGame(game);
+        io.to(roomCode).emit('game_state_update', game.state);
+      } catch (e) {
+        console.error('[Socket Error]', e);
+      }
+    };
+  };
+
+
+  socket.on('change_color', withGame((game, playerId, newColor: string) => {
+    game.changeColor(playerId, newColor);
+  }));
 
   socket.on('update_starting_cash', async (roomCode: string, cash: number) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    if (game.setStartingCash(cash)) {
-      await roomManager.saveGame(game);
-      io.to(roomCode).emit('game_state_update', game.state);
-    }
+    try {
+      const game = await roomManager.getGame(roomCode);
+      if (!game) return;
+      if (game.setStartingCash(cash)) {
+        await roomManager.saveGame(game);
+        io.to(roomCode).emit('game_state_update', game.state);
+      }
+    } catch(e) { console.error(e); }
   });
 
   socket.on('start_game', async (roomCode: string) => {
@@ -110,235 +127,95 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('roll_dice', async (roomCode: string) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('roll_dice', withGame((game, playerId) => {
     game.rollDice(
       playerId,
-      () => { io.to(roomCode).emit('game_state_update', game.state); },
+      () => { io.to(game.roomCode).emit('game_state_update', game.state); },
       async () => {
         await roomManager.saveGame(game, true);
-        io.to(roomCode).emit('game_state_update', game.state);
+        io.to(game.roomCode).emit('game_state_update', game.state);
       }
     );
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('acknowledge_card', async (roomCode: string) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('acknowledge_card', withGame((game, playerId) => {
     game.acknowledgeCard(playerId);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('execute_sabotage', async (roomCode: string, propertyIndex: number) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('execute_sabotage', withGame((game, playerId, propertyIndex: number) => {
     game.executeSabotage(playerId, propertyIndex);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('execute_protection', async (roomCode: string, propertyIndex: number) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('execute_protection', withGame((game, playerId, propertyIndex: number) => {
     game.executeProtection(playerId, propertyIndex);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('end_turn', async (roomCode: string) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('end_turn', withGame((game, playerId) => {
     game.endTurn(playerId);
-    await roomManager.saveGame(game, true);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('leave_game', async (roomCode: string) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('leave_game', withGame((game, playerId) => {
     game.removePlayer(playerId);
-    await roomManager.saveGame(game, true);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('check_timeout', async (roomCode: string) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game || !game.state.turnDeadline || Date.now() < game.state.turnDeadline) return;
 
-    const activePlayer = game.getCurrentPlayer();
-    if (!activePlayer) return;
 
-    if (game.state.activeAnimation) {
-      game.state.activeAnimation = undefined;
-      // Resume the actual decision deadline
-      if (game.state.awaitingDebtResolution) {
-         game.setDeadline(120);
-      } else if (game.state.awaitingFlightDecision !== null) {
-         game.setDeadline(15);
-      } else if (game.state.activeCard !== null) {
-         game.setDeadline(3);
-      } else if (game.state.awaitingBuyDecision !== null) {
-         game.setDeadline(15);
-      } else {
-         game.endTurn(activePlayer.id);
-      }
-    } else if (!game.state.hasRolled) {
-      game.rollDice(
-        activePlayer.id,
-        () => { io.to(roomCode).emit('game_state_update', game.state); },
-        async () => {
-          await roomManager.saveGame(game, true);
-          io.to(roomCode).emit('game_state_update', game.state);
-        }
-      );
-    } else if (game.state.awaitingBuyDecision !== null) {
-      game.passProperty(activePlayer.id);
-    } else if (game.state.awaitingFlightDecision !== null) {
-      game.state.awaitingFlightDecision = null;
-      game.endTurn(activePlayer.id);
-    } else if (game.state.awaitingSabotage) {
-      game.state.awaitingSabotage = false;
-      game.endTurn(activePlayer.id);
-    } else if (game.state.awaitingProtection) {
-      game.state.awaitingProtection = false;
-      game.endTurn(activePlayer.id);
-    } else if (game.state.awaitingDebtResolution) {
-      game.checkBankruptcy(activePlayer);
-      game.state.awaitingDebtResolution = null;
-      game.endTurn(activePlayer.id);
-    } else if (game.state.activeCard !== null) {
-      game.acknowledgeCard(activePlayer.id);
-    }
-    
-    await roomManager.saveGame(game, true);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
-
-  socket.on('pay_jail_fine', async (roomCode: string) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('pay_jail_fine', withGame((game, playerId) => {
     game.payJailFine(playerId);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('use_jail_card', async (roomCode: string) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('use_jail_card', withGame((game, playerId) => {
     game.useJailCard(playerId);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('buy_property', async (roomCode: string, propertyIndex: number, housesToBuy: number) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('buy_property', withGame((game, playerId, propertyIndex: number, housesToBuy: number) => {
     game.buyProperty(playerId, propertyIndex, housesToBuy);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('upgrade_property', async (roomCode: string, propertyIndex: number, housesToBuy: number) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('upgrade_property', withGame((game, playerId, propertyIndex: number, housesToBuy: number) => {
     game.upgradeProperty(playerId, propertyIndex, housesToBuy);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('pass_property', async (roomCode: string) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('pass_property', withGame((game, playerId) => {
     game.passProperty(playerId);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('sell_property_to_bank', async (roomCode: string, propertyIndex: number) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('sell_property_to_bank', withGame((game, playerId, propertyIndex: number) => {
     game.sellPropertyToBank(playerId, propertyIndex);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('flight_decision', async (roomCode: string, destinationIndex: number | null) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('flight_decision', withGame((game, playerId, destinationIndex: number | null) => {
     game.handleFlightDecision(playerId, destinationIndex);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('propose_trade', async (roomCode: string, trade: any) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
-    game.proposeTrade(playerId, trade);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  const validateTradeItems = (items: any) => {
+    if (!items) return false;
+    if (typeof items.money !== 'number' || isNaN(items.money) || items.money < 0) return false;
+    if (!Array.isArray(items.properties) || !items.properties.every((p: any) => typeof p === 'number')) return false;
+    return true;
+  };
 
-  socket.on('accept_trade', async (roomCode: string, tradeId: string) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  const validateTradePayload = (trade: any) => {
+    if (!trade || typeof trade.targetId !== 'string') return false;
+    if (!validateTradeItems(trade.offer) || !validateTradeItems(trade.request)) return false;
+    return true;
+  };
+
+  socket.on('propose_trade', withGame((game, playerId, trade: any) => {
+    if (validateTradePayload(trade)) game.proposeTrade(playerId, trade);
+  }));
+
+  socket.on('accept_trade', withGame((game, playerId, tradeId: string) => {
     game.acceptTrade(playerId, tradeId);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('reject_trade', async (roomCode: string, tradeId: string) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
+  socket.on('reject_trade', withGame((game, playerId, tradeId: string) => {
     game.rejectTrade(playerId, tradeId);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  }));
 
-  socket.on('counter_trade', async (roomCode: string, tradeId: string, newOffer: any, newRequest: any) => {
-    const game = await roomManager.getGame(roomCode);
-    if (!game) return;
-    const playerId = getPlayerId(game, socket.id);
-    if (!playerId) return;
-    game.counterTrade(playerId, tradeId, newOffer, newRequest);
-    await roomManager.saveGame(game);
-    io.to(roomCode).emit('game_state_update', game.state);
-  });
+  socket.on('counter_trade', withGame((game, playerId, tradeId: string, newOffer: any, newRequest: any) => {
+    if (validateTradeItems(newOffer) && validateTradeItems(newRequest)) game.counterTrade(playerId, tradeId, newOffer, newRequest);
+  }));
 
   socket.on('disconnect', async () => {
     console.log(`User disconnected: ${socket.id}`);

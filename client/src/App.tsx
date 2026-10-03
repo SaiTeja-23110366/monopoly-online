@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { socket } from './socket';
 import { Lobby } from './components/Lobby';
-import { Board } from './components/Board';
+import { Board, TurnTimer } from './components/Board';
 import { PropertyInfoCard } from './components/PropertyInfoCard';
 import { TradeModal } from './components/TradeModal';
 import { ViewTradeModal } from './components/ViewTradeModal';
@@ -27,9 +27,6 @@ export const App: React.FC = () => {
   const [isTradeModalOpen, setIsTradeModalOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState<TradeOffer | undefined>(undefined);
   const [viewingTrade, setViewingTrade] = useState<TradeOffer | undefined>(undefined);
-
-  // Timer State
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
   // Mobile Tab State
   const [activeTab, setActiveTab] = useState<'board' | 'players' | 'trades' | 'log'>('board');
@@ -144,28 +141,6 @@ export const App: React.FC = () => {
       setShowPopups(false);
     }
   }, [gameState?.awaitingBuyDecision, gameState?.activeCard, gameState?.awaitingFlightDecision, gameState?.awaitingSabotage, gameState?.awaitingProtection]);
-
-  useEffect(() => {
-    if (!gameState?.turnDeadline || gameState.state !== 'playing') {
-      setTimeLeft(null);
-      return;
-    }
-
-    const updateTimer = () => {
-      const remaining = Math.max(0, Math.floor((gameState.turnDeadline! - Date.now()) / 1000));
-      setTimeLeft(remaining);
-
-      // Emit check_timeout exactly when it hits 0
-      if (remaining === 0 && gameState.players[gameState.turnIndex]?.id === playerId) {
-        socket.emit('check_timeout', gameState.roomCode);
-      }
-    };
-
-    updateTimer(); // Initial call
-    const intervalId = setInterval(updateTimer, 500); // Check every 500ms
-
-    return () => clearInterval(intervalId);
-  }, [gameState?.turnDeadline, gameState?.state, gameState?.turnIndex, playerId, gameState?.roomCode]);
 
   if (!gameState) {
     return <Lobby onJoin={handleJoin} />;
@@ -589,8 +564,8 @@ export const App: React.FC = () => {
             gameState={gameState} 
             onSquareClick={handleSquareClick}
             onRollDice={isMyTurn && !gameState.hasRolled && gameState.state === 'playing' ? handleRollDice : undefined}
-            timeLeft={isMyTurn && activeTab === 'board' ? timeLeft : null}
             centerContent={centerContent}
+            playerId={playerId}
           />
           
           {/* Mobile Floating Action Drawer */}
@@ -598,13 +573,7 @@ export const App: React.FC = () => {
             <div className="md:hidden absolute bottom-4 left-4 right-4 bg-[#212130] rounded-xl border border-white/10 p-4 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-[45]">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-gray-300">It's your turn!</h3>
-                {timeLeft !== null && (
-                  <div className="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-lg">
-                    <span className={`font-mono font-black ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-green-400'}`}>
-                      {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
-                    </span>
-                  </div>
-                )}
+                <TurnTimer gameState={gameState} playerId={playerId} variant="mobile" />
               </div>
               
               {/* Timer only, Roll Dice button moved to center of board */}
@@ -686,13 +655,8 @@ export const App: React.FC = () => {
                 {isMyTurn ? "It's your turn!" : `Waiting for ${currentPlayer?.name}...`}
               </h3>
 
-              {timeLeft !== null && gameState.state === 'playing' && (
-                <div className="flex items-center justify-center gap-2 mb-3 bg-black/40 py-2 px-4 rounded-lg border border-white/5 mx-auto w-max">
-                  <span className="text-gray-400 font-bold uppercase tracking-wider text-xs">Time Left:</span>
-                  <span className={`text-lg font-mono font-black ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-green-400'}`}>
-                    {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
-                  </span>
-                </div>
+              {gameState.state === 'playing' && (
+                <TurnTimer gameState={gameState} playerId={playerId} variant="panel" />
               )}
             </div>
 
