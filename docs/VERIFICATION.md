@@ -11,8 +11,8 @@ frame-rate results.
 
 ## Automated checks
 
-Final local verification on 2026-10-04 used Node 24.19.0 and an isolated Redis
-7.4.9 built from the official Redis release tag. A clean lockfile install followed
+Baseline verification for `9bd6470` on 2026-10-04 used Node 24.19.0 and an isolated
+Redis 7.4.9 built from the official Redis release tag. A clean lockfile install followed
 by the complete aggregate passed: **67 server tests and 35 client tests, with
 zero failures and zero skips**. Type checks, lint, both builds, the packaged smoke,
 and whitespace checks passed. Independent review repeated the aggregate and
@@ -68,6 +68,39 @@ TTL eviction, ambiguous write recovery, interrupted admission, spectator exit,
 client retry, and admission-proof concurrency issues.
 
 ## Browser checks still required before release
+
+### Board readability adjustment (2026-10-04)
+
+The desktop board now uses more of the spare horizontal space, with a 760px
+preferred minimum and a 1080px maximum when the viewport width allows. The
+desktop action column stays sticky and scrolls independently if its contents
+exceed the screen height. Tablet/phone board widths and panel stacking remain
+unchanged. Property-label size limits now allow the larger canvas to improve
+readability as well as tile size.
+
+CSS-contract calculations (not browser measurements) give these board widths:
+
+| CSS viewport | Before | After |
+| --- | ---: | ---: |
+| 1280 × 800 | 560px | 760px |
+| 1536 × 864 | 612px | 760px |
+| 1856 × 968 | 716px | 808px |
+| 1920 × 1080 | 828px | 920px |
+| 2560 × 1440 | 844px | 1080px |
+
+Short screens may need ordinary page scrolling to see both the top and bottom
+of the larger board. The existing Fit button resets pan/zoom inside the board;
+it does not shrink the page layout to the viewport height.
+
+The complete local `npm run check` passed after this CSS-only UI adjustment:
+39 client tests and 63 server tests passed, alongside both
+type checks, client lint, both production builds, and packaged smoke. The four
+new tests check responsive CSS contracts and token-anchor geometry at sizes
+from 296px to 1080px. The local environment had no Redis binary/endpoint, so
+four real-Redis tests were skipped here; the unchanged CI workflow runs those tests
+with its Redis service. This is not a new browser visual sign-off: the earlier
+managed-cloud localhost block has not been bypassed. Verify the larger board, sticky
+sidebar, scroll behavior, zoom/fit, and resize behavior in the local preview.
 
 Run the built app locally in an unrestricted development browser. Use two
 isolated profiles/incognito contexts; tabs sharing browser storage intentionally
