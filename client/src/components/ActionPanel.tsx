@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowRight, Dices, House, Plane, Shield, Clock3, HandCoins, LockKeyhole, Trophy, ArrowLeftRight } from 'lucide-react';
 import type { GameState, GameCommand, GamePhase } from '../../../shared/types';
-import { SQUARES, RULES, liquidationValue } from '../../../shared/board';
+import { SQUARES, rulesForGame, liquidationValue } from '../../../shared/board';
 import { formatMoney } from '../lib/geometry';
 import { phaseDescription } from '../lib/phase';
 
@@ -16,6 +16,7 @@ export function ActionPanel({ game, playerId, blocked, animating, pending, comma
   game: GameState; playerId: string; blocked: boolean; animating: boolean; pending: string | null;
   command: (command: GameCommand) => void; onInspect: (index: number) => void; onTrade: () => void; onBankrupt: () => void; offset: number;
 }) {
+  const rules = rulesForGame(game);
   const player = game.players[game.turnIndex];
   const me = game.players.find(item => item.id === playerId);
   const mine = player?.id === playerId && me?.status === 'active';
@@ -26,7 +27,7 @@ export function ActionPanel({ game, playerId, blocked, animating, pending, comma
     <h2>{animating ? 'Watch it play out' : phaseDescription(phase)}</h2>
     {animating ? <p className="muted">The next decision appears after the dice, movement, and payments finish.</p> : game.state === 'ended' ? <><div className="result-icon"><Trophy /></div><p>{game.players.find(item => item.id === game.winnerId)?.name || 'Nobody'} takes the win. Thanks for playing.</p></> : !mine ? <><p className="muted">{me?.status !== 'active' ? 'You’re spectating. Follow the table and the final result here.' : `${player?.name} is ${phaseDescription(phase).toLowerCase()}. You can inspect deeds and plan your next deal.`}</p><div className="waiting-pulse"><span /><span /><span /></div></> : <>
       {phase.kind === 'awaiting_roll' && <>
-        {player.inJail ? <><p className="muted"><LockKeyhole size={16} /> In jail · {player.jailTurns} failed attempt{player.jailTurns === 1 ? '' : 's'}</p><p>Roll doubles to escape. After the third failed roll, you leave for free and can move next turn.</p><div className="action-grid"><button className="button secondary" disabled={disabled || player.money < RULES.jailFine} onClick={() => command({ type: 'pay_jail_fine' })}>Pay {formatMoney(RULES.jailFine)}</button><button className="button secondary" disabled={disabled || player.getOutOfJailCards < 1} onClick={() => command({ type: 'use_jail_card' })}>Use free card ({player.getOutOfJailCards})</button></div></> : <p className="muted">{game.extraRoll ? 'Doubles! You’ve earned another roll. Three doubles in one turn send you to jail.' : 'Your next city is just a roll away.'}</p>}
+        {player.inJail ? <><p className="muted"><LockKeyhole size={16} /> In jail · {player.jailTurns} failed attempt{player.jailTurns === 1 ? '' : 's'}</p><p>Roll doubles to escape. After the third failed roll, you leave for free and can move next turn.</p><div className="action-grid"><button className="button secondary" disabled={disabled || player.money < rules.jailFine} onClick={() => command({ type: 'pay_jail_fine' })}>Pay {formatMoney(rules.jailFine)}</button><button className="button secondary" disabled={disabled || player.getOutOfJailCards < 1} onClick={() => command({ type: 'use_jail_card' })}>Use free card ({player.getOutOfJailCards})</button></div></> : <p className="muted">{game.extraRoll ? 'Doubles! You’ve earned another roll. Three doubles in one turn send you to jail.' : 'Your next city is just a roll away.'}</p>}
         <button className="button primary full" disabled={disabled} onClick={() => command({ type: 'roll_dice' })}><Dices size={21} />{pending === 'roll_dice' ? 'Rolling…' : player.inJail ? 'Roll for doubles' : 'Roll dice'}</button>
       </>}
       {phase.kind === 'buy' && <PurchaseDecision key={game.phaseId} phase={phase} game={game} disabled={disabled} command={command} inspect={onInspect} />}

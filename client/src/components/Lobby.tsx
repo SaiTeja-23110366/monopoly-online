@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { ArrowRight, Globe2, Copy, Check, Users, Wifi, ArrowUpRight } from 'lucide-react';
 import type { GameCommand, GameState } from '../../../shared/types';
 import type { PlayerProfile } from '../../../shared/protocol';
-import { RULES, PLAYER_COLORS } from '../../../shared/board';
+import { rulesForGame, PLAYER_COLORS } from '../../../shared/board';
 import { TOKEN_SYMBOLS, formatMoney } from '../lib/geometry';
 import { tokenSymbol } from '../lib/tokens';
 
@@ -13,6 +13,7 @@ export function Lobby({ game, playerId, ready, pending, enter, command }: {
   game: GameState | null; playerId?: string; ready: boolean; pending: string | null;
   enter: (profile: PlayerProfile, roomCode?: string) => void; command: (command: GameCommand) => void;
 }) {
+  const rules = rulesForGame(game ?? { rulesVersion: 3 });
   const [mode, setMode] = useState<'create' | 'join'>(() => new URLSearchParams(location.search).has('room') ? 'join' : 'create');
   const [name, setName] = useState(() => { try { return localStorage.getItem('monopoly_name') || ''; } catch { return ''; } });
   const [code, setCode] = useState(() => new URLSearchParams(location.search).get('room')?.toUpperCase() || '');
@@ -51,16 +52,18 @@ export function Lobby({ game, playerId, ready, pending, enter, command }: {
           <label>Choose your token</label><ColorPicker color={color} onChange={setColor} />
           <button className="button primary full" type="submit" disabled={!ready || !!pending || !name.trim() || (mode === 'join' && code.length < 6)}>{pending ? 'Setting your table…' : mode === 'create' ? 'Create table' : 'Join table'}<ArrowRight size={18} /></button>
         </form>
+        <p className="footnote">New tables use the balanced economy: {formatMoney(rules.passingStart)} passing Start, {formatMoney(rules.landingStart)} landing exactly. Mine bonuses: {rules.mineBonuses.slice(1).map(formatMoney).join(' / ')} total for 1–4 mines. Joining friends keeps that table’s rules.</p>
         <p className="footnote">No account needed. Your seat is saved on this browser.</p>
       </> : <>
         <span className="eyebrow">THE TABLE IS OPEN</span><h2>{isHost ? 'Make yourself at home' : 'You’re in good company'}</h2>
+        <p className="form-note">{rules.version === 3 ? 'Balanced economy' : 'Legacy economy · This saved table keeps its original rules. New tables use the balanced economy.'} · Start: {formatMoney(rules.passingStart)} passing / {formatMoney(rules.landingStart)} landing. Mine bonuses: {rules.mineBonuses.slice(1).map(formatMoney).join(' / ')} total for 1–4 mines.</p>
         <div className="invite-card"><div><span>ROOM CODE</span><strong>{game.roomCode}</strong></div><button className="button secondary" onClick={copyInvite}>{copied ? <Check size={17} /> : <Copy size={17} />}{copied ? 'Copied' : 'Invite'}</button></div>
         {copyFailed && <p className="form-note">Share this room code with your friends: {game.roomCode}</p>}
         <div className="lobby-players">{game.players.map((player) => <div className="lobby-player" key={player.id}><span className="player-token" style={{ color: player.color }}>{tokenSymbol(player.color)}</span><strong>{player.name}{player.id === playerId ? ' (you)' : ''}</strong><span className="badge">{player.id === game.hostId ? 'HOST' : player.connected === false ? 'AWAY' : 'READY'}</span></div>)}</div>
         <label>Your token</label><ColorPicker color={me?.color || color} used={game.players.filter(player => player.id !== playerId).map(player => player.color)} onChange={choice => command({ type: 'change_color', color: choice })} />
-        {isHost ? <div className="cash-setting"><label htmlFor="starting-cash">Starting cash per player</label><div className="input-action"><input id="starting-cash" type="number" step="100" min={RULES.minStartingCash} max={RULES.maxStartingCash} value={cash} onChange={event => setCash(Number(event.target.value))} /><button className="button secondary" disabled={!!pending || !Number.isInteger(cash) || cash < RULES.minStartingCash || cash > RULES.maxStartingCash || cash === game.startingCash} onClick={() => command({ type: 'update_starting_cash', cash })}>Apply</button></div><small>At this table: {formatMoney(game.startingCash)} each</small></div> : <p className="form-note">Starting cash: <strong>{formatMoney(game.startingCash)}</strong> each</p>}
-        <button className="button primary full" disabled={!ready || !!pending || !isHost || game.players.length < RULES.minPlayers} onClick={() => command({ type: 'start_game' })}>{isHost ? game.players.length < RULES.minPlayers ? 'Invite at least one friend' : 'Let’s play' : 'Waiting for the host to start'}<ArrowRight size={18} /></button>
-        <p className="footnote">{game.players.length} of {RULES.maxPlayers} seats filled · Host sets the starting cash</p>
+        {isHost ? <div className="cash-setting"><label htmlFor="starting-cash">Starting cash per player</label><div className="input-action"><input id="starting-cash" type="number" step="100" min={rules.minStartingCash} max={rules.maxStartingCash} value={cash} onChange={event => setCash(Number(event.target.value))} /><button className="button secondary" disabled={!!pending || !Number.isInteger(cash) || cash < rules.minStartingCash || cash > rules.maxStartingCash || cash === game.startingCash} onClick={() => command({ type: 'update_starting_cash', cash })}>Apply</button></div><small>At this table: {formatMoney(game.startingCash)} each</small></div> : <p className="form-note">Starting cash: <strong>{formatMoney(game.startingCash)}</strong> each</p>}
+        <button className="button primary full" disabled={!ready || !!pending || !isHost || game.players.length < rules.minPlayers} onClick={() => command({ type: 'start_game' })}>{isHost ? game.players.length < rules.minPlayers ? 'Invite at least one friend' : 'Let’s play' : 'Waiting for the host to start'}<ArrowRight size={18} /></button>
+        <p className="footnote">{game.players.length} of {rules.maxPlayers} seats filled · Host sets the starting cash</p>
       </>}
     </section>
   </main>;
