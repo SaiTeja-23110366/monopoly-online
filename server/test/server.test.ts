@@ -299,6 +299,41 @@ test('restart narrows legacy flight choices without losing the room or accepting
   }
 });
 
+test('restart preserves legacy and balanced economies without rewriting balances or pending offers', async () => {
+  for (const rulesVersion of [undefined, 2, 3] as const) {
+    let now = 100_000; const store = new MemoryRoomStore(() => now);
+    const options = { store, now: () => now, scheduleTimers: false,
+      gameFactory: (code: string) => new MonopolyGame(code, { now: () => now, dice: (): [number, number] => [1, 2] }) };
+    let manager = new RoomManager(options); await manager.start();
+    const first = success(await manager.createRoom('a', player()));
+    const second = success(await manager.joinRoom('b', { ...player('Guest', PLAYER_COLORS[1]), roomCode: first.state.roomCode }));
+    assert.equal(first.state.rulesVersion, 3, 'new rooms always use the balanced economy');
+    const started = await manager.execute('a', first.session, command(second.state, { type: 'start_game' }));
+    const offered = await manager.execute('a', first.session, command(started.state!, { type: 'propose_trade', targetId: second.session.playerId,
+      offer: { money: 100, properties: [], getOutOfJailCards: 0 }, request: { money: 0, properties: [], getOutOfJailCards: 0 } }));
+    assert.equal(offered.ok, true); await manager.close();
+    const saved = (await store.load(first.state.roomCode))!; const previous = saved.storageVersion;
+    if (rulesVersion === undefined) delete saved.state.rulesVersion; else saved.state.rulesVersion = rulesVersion;
+    saved.state.players[0].position = 54; saved.state.properties[10].ownerId = first.session.playerId;
+    saved.state.version++; saved.storageVersion++; await store.save(first.state.roomCode, saved, previous);
+    manager = new RoomManager(options); await manager.start();
+    try {
+      const resumed = success(await manager.resumeSession('new-a', first.session));
+      assert.equal(resumed.state.rulesVersion, rulesVersion);
+      assert.deepEqual(resumed.state.properties, saved.state.properties);
+      assert.deepEqual(resumed.state.trades, saved.state.trades);
+      assert.deepEqual(resumed.state.players.map(p => p.money), saved.state.players.map(p => p.money));
+      const roll = await manager.execute('new-a', first.session, command(resumed.state, { type: 'roll_dice' }));
+      assert.equal(roll.ok, true); now = roll.state!.turnDeadline!; await manager.reconcile(first.state.roomCode);
+      const moved = await manager.inspect(first.state.roomCode);
+      assert.equal(moved.players[0].money, 1500 + (rulesVersion === 3 ? 225 : 950));
+      assert.equal(moved.players[0].position, 1);
+      assert.deepEqual(moved.trades, saved.state.trades);
+      assert.equal(moved.rulesVersion, rulesVersion);
+    } finally { await manager.close(); }
+  }
+});
+
 test('presence has reconnect grace; only a connected member receives host authority', async () => {
   let now = 1000; const store = new MemoryRoomStore(() => now); const manager = new RoomManager({ store, now: () => now, scheduleTimers: false, hostGraceMs: 100 }); await manager.start();
   try {

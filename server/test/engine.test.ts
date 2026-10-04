@@ -148,16 +148,16 @@ test('doubles wait for landing decisions and third consecutive doubles always se
 });
 
 test('Start landing/passing rewards and mine bonuses occur exactly once on eligible routes', () => {
-  for (const [from, expected, target] of [[53, 1000, 0], [54, 750, 1]] as const) {
+  for (const [from, expected, target] of [[53, RULES.landingStart, 0], [54, RULES.passingStart, 1]] as const) {
     const game = setup(); game.getPlayer('A')!.position = from; game.getPlayer('A')!.flightChances = 0;
     game.state.properties[10].ownerId = 'A'; game.state.properties[27].ownerId = 'A';
     ok(game, 'A', { type: 'roll_dice' }); tick(game);
-    assert.equal(game.getPlayer('A')!.money, 1500 + expected + 500);
+    assert.equal(game.getPlayer('A')!.money, 1500 + expected + RULES.mineBonuses[2]);
     assert.equal(game.getPlayer('A')!.position, target);
     assert.equal(game.getPlayer('A')!.flightChances, 1);
     const movement = phase(game, 'moving'); assert.equal(movement.path.length, 3);
     assert.equal(movement.path.at(-1), target);
-    tick(game); assert.equal(game.getPlayer('A')!.money, 1500 + expected + 500);
+    tick(game); assert.equal(game.getPlayer('A')!.money, 1500 + expected + RULES.mineBonuses[2]);
   }
 });
 
@@ -172,15 +172,15 @@ test('Go back three is a reverse path, never a lap or Start reward', () => {
   tick(game); assert.equal(phase(game, 'buy').propertyIndex, 44);
 });
 
-test('Advance to Start grants 1000 plus mine bonus once and preserves actor through chained movement', () => {
+test('Advance to Start grants the current reward plus mine bonus once and preserves actor through chained movement', () => {
   const game = setup({ drawCard: card('go_to_start') }); land(game, 13);
   game.state.properties[10].ownerId = 'A';
   const before = game.getPlayer('A')!.money;
   ok(game, 'A', { type: 'acknowledge_card' });
   assert.equal(phase(game, 'moving').path.length, 43);
-  assert.equal(game.getPlayer('A')!.money, before + 1200);
+  assert.equal(game.getPlayer('A')!.money, before + RULES.landingStart + RULES.mineBonuses[1]);
   tick(game); phase(game, 'awaiting_end'); assert.equal(game.getCurrentPlayer()!.id, 'A');
-  assert.equal(game.getPlayer('A')!.money, before + 1200);
+  assert.equal(game.getPlayer('A')!.money, before + RULES.landingStart + RULES.mineBonuses[1]);
 });
 
 test('all card effects remain actor-bound and cards auto-resolve rather than reroll after doubles', () => {

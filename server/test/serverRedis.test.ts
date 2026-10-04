@@ -142,3 +142,39 @@ redisTest('real Redis recovers unacknowledged admissions after restart and prese
     assert.equal(recoveredGuest.state.properties[4].ownerId, second.session.playerId); assert.equal(recoveredGuest.state.properties[4].houses, 1); assert.equal(recoveredGuest.state.trades[tradeId].status, 'accepted');
   } finally { await manager.close(); }
 });
+
+redisTest('real Redis preserves legacy and balanced economy versions across restart and the next Start reward', async () => {
+  for (const rulesVersion of [undefined, 2, 3] as const) {
+    const namespace = prefix(); let now = Date.now();
+    const options = () => ({ store: new RedisRoomStore(url!, namespace), scheduleTimers: false, now: () => now,
+      gameFactory: (code: string) => new MonopolyGame(code, { now: () => now, dice: (): [number, number] => [1, 2] }) });
+    let manager = new RoomManager(options()); await manager.start();
+    const first = success(await manager.createRoom('a', profile()));
+    const second = success(await manager.joinRoom('b', { ...profile(), name: 'Grace', color: PLAYER_COLORS[1], roomCode: first.state.roomCode }));
+    assert.equal(first.state.rulesVersion, 3);
+    const started = await manager.execute('a', first.session, command(second.state, { type: 'start_game' }));
+    assert.equal(started.ok, true); await manager.close();
+    // Represent an authentic pre-balance snapshot or an explicitly versioned one.
+    const seedStore = new RedisRoomStore(url!, namespace); await seedStore.start();
+    let saved: RoomRecord;
+    try {
+      saved = (await seedStore.load(first.state.roomCode))!; const previous = saved.storageVersion;
+      if (rulesVersion === undefined) delete saved.state.rulesVersion; else saved.state.rulesVersion = rulesVersion;
+      saved.state.players[0].position = 54; saved.state.properties[10].ownerId = first.session.playerId;
+      saved.state.version++; saved.storageVersion++; await seedStore.save(first.state.roomCode, saved, previous);
+    } finally { await seedStore.close(); }
+    manager = new RoomManager(options()); await manager.start();
+    try {
+      const resumed = success(await manager.resumeSession('new-a', first.session));
+      assert.equal(resumed.state.rulesVersion, rulesVersion);
+      assert.deepEqual(resumed.state.properties, saved!.state.properties);
+      assert.deepEqual(resumed.state.players.map(p => p.money), saved!.state.players.map(p => p.money));
+      const rolled = await manager.execute('new-a', first.session, command(resumed.state, { type: 'roll_dice' }));
+      assert.equal(rolled.ok, true); now = rolled.state!.turnDeadline!; await manager.reconcile(first.state.roomCode);
+      const moved = await manager.inspect(first.state.roomCode);
+      assert.equal(moved.rulesVersion, rulesVersion);
+      assert.equal(moved.players[0].position, 1);
+      assert.equal(moved.players[0].money, 1500 + (rulesVersion === 3 ? 225 : 950));
+    } finally { await manager.close(); }
+  }
+});
