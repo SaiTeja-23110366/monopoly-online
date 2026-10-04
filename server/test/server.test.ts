@@ -6,7 +6,7 @@ import { createGameServer, configuredStore } from '../src/index';
 import { MemoryRoomStore, StorageError, type RoomRecord } from '../src/roomStore';
 import { RoomManager } from '../src/roomManager';
 import { MonopolyGame } from '../src/gameState';
-import { PLAYER_COLORS } from '../../shared/board';
+import { PLAYER_COLORS, flightDestinations } from '../../shared/board';
 import type { CommandAck, CommandEnvelope, GameCommand, GameState } from '../../shared/types';
 import type { ClientEvents, ServerEvents, SessionAck, SessionCredentials } from '../../shared/protocol';
 
@@ -264,6 +264,39 @@ test('restart recovers durable phase, dedupe and overdue timeout without rerolli
     await manager.reconcile(first.state.roomCode); state = await manager.inspect(first.state.roomCode); assert.notEqual(state.phase.kind, 'rolling'); assert.equal(rolls, 1);
     const version = state.version; await manager.reconcile(first.state.roomCode); assert.equal((await manager.inspect(first.state.roomCode)).version, version);
   } finally { await manager.close(); }
+});
+
+test('restart narrows legacy flight choices without losing the room or accepting the airport', async () => {
+  for (const [airport, next] of [[6,21], [21,34], [34,45], [45,6]]) {
+    const now = 100_000; const store = new MemoryRoomStore(() => now);
+    const options = { store, now: () => now, scheduleTimers: false };
+    let manager = new RoomManager(options); await manager.start();
+    const first = success(await manager.createRoom('a', player()));
+    success(await manager.joinRoom('b', { ...player('Guest', PLAYER_COLORS[1]), roomCode: first.state.roomCode }));
+    const started = await manager.execute('a', first.session, command(await manager.inspect(first.state.roomCode), { type: 'start_game' }));
+    assert.equal(started.ok, true); await manager.close();
+    const saved = (await store.load(first.state.roomCode))!; const previous = saved.storageVersion;
+    const actor = saved.state.players[0]; actor.position = airport;
+    saved.state.properties[airport].ownerId = actor.id;
+    saved.state.phase = { kind: 'flight', playerId: actor.id, airportId: airport, destinations: [...flightDestinations(airport), next], ticketPrice: 0 };
+    saved.state.turnDeadline = now + 25_000; saved.state.phaseId++; saved.state.version++; saved.storageVersion++;
+    await store.save(first.state.roomCode, saved, previous);
+    manager = new RoomManager(options); await manager.start();
+    try {
+      const resumed = success(await manager.resumeSession('new-a', first.session));
+      assert.equal(resumed.state.phase.kind, 'flight');
+      if (resumed.state.phase.kind === 'flight') assert.deepEqual(resumed.state.phase.destinations, flightDestinations(airport));
+      assert.equal(resumed.state.turnDeadline, saved.state.turnDeadline);
+      assert.deepEqual(resumed.state.properties, saved.state.properties);
+      assert.equal(resumed.state.players[0].money, actor.money);
+      const denied = await manager.execute('new-a', first.session, command(resumed.state, { type: 'flight_decision', destinationIndex: next }));
+      assert.equal(denied.ok, false); assert.equal(denied.error?.code, 'INVALID_DESTINATION');
+      const current = await manager.inspect(first.state.roomCode);
+      const accepted = await manager.execute('new-a', first.session, command(current, { type: 'flight_decision', destinationIndex: (next + 55) % 56 }));
+      assert.equal(accepted.ok, true); assert.equal(accepted.state!.players[0].flightChances, 0);
+      assert.equal(accepted.state!.properties[next].ownerId, null);
+    } finally { await manager.close(); }
+  }
 });
 
 test('presence has reconnect grace; only a connected member receives host authority', async () => {

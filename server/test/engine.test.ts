@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MonopolyGame, SYSTEM_ACTOR, assertGameState, type EngineOptions } from '../src/gameState';
+import { MonopolyGame, SYSTEM_ACTOR, assertGameState, migrateSavedFlightDecision, type EngineOptions } from '../src/gameState';
 import { BOARD_DATA, RULES, PLAYER_COLORS, flightDestinations, liquidationValue } from '../../shared/board';
 import type { ActiveCard, GameCommand, GamePhase, TradeAssets } from '../../shared/types';
 
@@ -54,7 +54,11 @@ test('canonical board has 56 squares, server economics and valid forward flight 
     assert.equal(square.housePrice, square.houseCost);
     if (square.type === 'property') assert.equal(square.rent?.length, 6);
   }
-  assert.deepEqual(flightDestinations(45), [46,47,48,49,50,51,52,53,54,55,0,1,2,3,4,5,6]);
+  assert.deepEqual(flightDestinations(6), [7,8,9,10,11,12,13,14,15,16,17,18,19,20]);
+  assert.deepEqual(flightDestinations(21), [22,23,24,25,26,27,28,29,30,31,32,33]);
+  assert.deepEqual(flightDestinations(34), [35,36,37,38,39,40,41,42,43,44]);
+  assert.deepEqual(flightDestinations(45), [46,47,48,49,50,51,52,53,54,55,0,1,2,3,4,5]);
+  assert.equal([6,21,34,45].flatMap(flightDestinations).length, 52);
   assert.deepEqual(flightDestinations(-1), []);
 });
 
@@ -249,14 +253,37 @@ test('tax amounts use canonical asset development values, fund jackpot, and debt
 test('flight rejects all invalid payloads before paying, follows segment and own airport is free', () => {
   const game = setup(); game.state.properties[6].ownerId = 'A'; game.getPlayer('A')!.money = 0; land(game, 6);
   assert.equal(phase(game, 'flight').ticketPrice, 0);
-  for (const destinationIndex of [-1, 56, 6, 22, 55, NaN, 7.5, '7']) reject(game, 'A', { type: 'flight_decision', destinationIndex });
+  for (const destinationIndex of [-1, 56, 6, 21, 22, 55, NaN, 7.5, '7']) reject(game, 'A', { type: 'flight_decision', destinationIndex });
   reject(game, 'B', { type: 'flight_decision', destinationIndex: 7 }, 'NOT_YOUR_TURN');
-  ok(game, 'A', { type: 'flight_decision', destinationIndex: 21 });
+  ok(game, 'A', { type: 'flight_decision', destinationIndex: 20 });
   assert.equal(game.getPlayer('A')!.flightChances, 0); assert.equal(game.getPlayer('A')!.money, 0);
-  assert.deepEqual(phase(game, 'moving').path, [21]); tick(game); phase(game, 'awaiting_end');
+  assert.deepEqual(phase(game, 'moving').path, [20]); tick(game); phase(game, 'awaiting_end');
 });
 
-test('each of 56 possible flight destinations resolves through the same landing engine', () => {
+test('every next airport is excluded and rejected atomically regardless of ownership', () => {
+  const airports = [6,21,34,45];
+  for (let i = 0; i < airports.length; i++) for (const owner of [null, 'A', 'B']) {
+    const airport = airports[i], next = airports[(i + 1) % airports.length];
+    const game = setup(); game.state.properties[airport].ownerId = 'B';
+    game.state.properties[next].ownerId = owner;
+    land(game, airport); tick(game);
+    const flight = phase(game, 'flight');
+    assert.equal(flight.destinations.includes(next), false);
+    assert.equal(flight.destinations.some(id => airports.includes(id)), false);
+    reject(game, 'A', { type: 'flight_decision', destinationIndex: next }, 'INVALID_DESTINATION');
+    // A stale or manipulated option list cannot authorize the airport endpoint.
+    flight.destinations.push(next);
+    reject(game, 'A', { type: 'flight_decision', destinationIndex: next }, 'INVALID_DESTINATION');
+    flight.destinations.pop();
+    const last = (next + RULES.boardSize - 1) % RULES.boardSize;
+    ok(game, 'A', { type: 'flight_decision', destinationIndex: last });
+    assert.equal(game.getPlayer('A')!.position, last);
+    assert.equal(game.getPlayer('A')!.flightChances, 0);
+    assert.equal(game.state.properties[next].ownerId, owner);
+  }
+});
+
+test('each of 52 possible flight destinations resolves through the same landing engine', () => {
   for (const airport of [6,21,34,45]) for (const destination of flightDestinations(airport)) {
     const game = setup({ drawCard: card('get_out_of_jail') });
     game.state.properties[airport].ownerId = 'A'; land(game, airport); phase(game, 'flight');
@@ -270,6 +297,39 @@ test('each of 56 possible flight destinations resolves through the same landing 
     else if (square.type === 'property' || square.type === 'railroad' || square.type === 'utility') phase(game, 'buy');
     else if (destination === 42) assert.equal(phase(game, 'moving').reason, 'jail');
     else phase(game, 'awaiting_end');
+  }
+});
+
+test('saved legacy airport quotes migrate narrowly and committed airport flights remain recoverable', () => {
+  const airports = [6,21,34,45];
+  for (let i = 0; i < airports.length; i++) {
+    const airport = airports[i], next = airports[(i + 1) % airports.length];
+    const game = setup(); game.state.properties[airport].ownerId = 'A'; land(game, airport);
+    const original = structuredClone(game.state);
+    phase(game, 'flight').destinations.push(next);
+    assert.throws(() => assertGameState(game.state));
+    migrateSavedFlightDecision(game.state);
+    assert.deepEqual(game.state, original);
+    migrateSavedFlightDecision(game.state); assert.deepEqual(game.state, original);
+    for (const destinations of [[next], [...flightDestinations(airport), airport], [...flightDestinations(airport), String(next)]]) {
+      const malformed = structuredClone(original);
+      (malformed.phase as unknown as { destinations: unknown[] }).destinations = destinations;
+      const before = structuredClone(malformed);
+      migrateSavedFlightDecision(malformed); assert.deepEqual(malformed, before);
+      assert.throws(() => assertGameState(malformed));
+    }
+    // A pre-upgrade accepted command already paid/consumed its chance. Its
+    // pending movement and historical event must recover without replaying it.
+    ok(game, 'A', { type: 'flight_decision', destinationIndex: (next + 55) % 56 });
+    const moving = phase(game, 'moving'); moving.to = next; moving.path = [next];
+    game.getPlayer('A')!.position = next;
+    const event = game.state.events.at(-1)!;
+    assert.equal(event.type, 'movement');
+    if (event.type === 'movement') { event.to = next; event.path = [next]; }
+    assertGameState(game.state); tick(game); phase(game, 'buy');
+    assert.equal(game.getPlayer('A')!.flightChances, 0);
+    ok(game, 'A', { type: 'pass_property' });
+    assertGameState(game.state);
   }
 });
 
