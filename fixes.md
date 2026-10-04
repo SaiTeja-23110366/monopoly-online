@@ -1,5 +1,9 @@
 # Monopoly Online - Optimization Fixes
 
+> Historical prototype checklist. Several entries were already fixed before the
+> current rebuild. Use README.md, docs/RULES.md, and docs/VERIFICATION.md for the
+> implemented architecture, rules, and verified current behavior.
+
 **🔴 Critical P0 (fix first):**
 1. **500ms timer re-renders entire app** — `App.tsx` has a `setInterval` updating `timeLeft` state every 500ms. Will fix by moving timer to a separate component or using a ref/memo.
 2. **O(N²) per-square filtering in Board.tsx** — `gameState.players.filter(...)` and `Object.values(gameState.properties).filter(...)` run per square per render. Will memoize at the Board level.
