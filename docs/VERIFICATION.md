@@ -143,6 +143,51 @@ unverified because of the previously documented localhost restriction; it was
 not bypassed. This verification does not establish economic balance or match
 duration, which need separate simulation and human playtesting.
 
+## Approved balanced economy (2026-10-04)
+
+New rooms use economy version 3: Start pays $200 passing / $300 on an exact
+landing; total mine bonuses are $25/$60/$100/$150. A complete color group
+doubles undeveloped city rent. A hotel retains its building/value but charges
+four-house rent while its group is incomplete, restoring hotel rent as soon
+as its owner completes the group again. City purchase prices, nominal rent
+ladders, building costs, construction permissions, taxes, liquidation, trades,
+airport boundaries, and the approved board layout remain unchanged.
+
+The shared ownership-sensitive calculation supplies both server charges and
+current deed quotes. The UI explains the full-set bonus, inactive hotel state,
+and each room's economy version. Presentation buffering is preserved. Version-2
+snapshots with a missing/2 economy marker keep their original rules, balances,
+buildings and offers; already-charged rent/debt never gets retroactively repriced.
+Create a new room to use the balanced economy.
+
+The final local aggregate and independent repeat passed **96 server tests and
+60 client tests**, with zero failures and **six real-Redis tests explicitly
+skipped** because no local Redis endpoint was configured. Both type checks,
+lint, production builds, packaged HTTP/Socket.IO smoke and whitespace checks
+passed. The remote CI workflow supplies Redis for all six persistence tests.
+Twenty-one new economy tests cover 1,944 city/version/level/ownership combinations,
+every Start/mine tier, card rewards, purchases, trades, Risk/shields, bank sales,
+elimination, retained hotel value/reactivation, frozen debts, invalid versions,
+and JSON recovery. Manager and real-Redis restart regressions cover missing,
+explicit legacy, and balanced economy versions. Nine new component tests cover
+versioned explanations, live rents and set/hotel transitions.
+
+Independent review confirmed exact unchanged board-catalog values and 264,000
+randomized rent quotes against a separately written formula. The combined
+economy study ran 100 seeds for each of ten approved-policy/player-count cases,
+alongside baseline and income-only comparisons. The full approved source rerun
+produced identical outputs. See [the balance report](BALANCE.md) and the committed
+`scripts/simulate-economy.cjs` for methods, results, and reproduction. Simulated
+turn counts do not establish human duration, universal fairness, or guaranteed
+completion; conservative and two-player policies still have unfinished tails.
+
+Rebuild both client and server and restart for rollout. Finish memory-store
+games before restarting, because that adapter does not persist rooms. Existing
+Redis rooms retain their economy; new rooms are required for the new package.
+Do not run an older server against new-economy rooms. Browser visual/gameplay QA
+remains unverified under the earlier localhost restriction, which was not
+bypassed. No merge or deployment is part of this change.
+
 ## Browser checks still required before release
 
 ### Viewport-fit desktop board (2026-10-04)

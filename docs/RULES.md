@@ -7,17 +7,19 @@ the source of truth; the browser displays the same prices and legal choices.
 ## Money and the board
 
 - The host chooses starting cash in the lobby. Starting the match locks its setup.
-- Passing Start pays $750; landing on Start pays $1,000 instead. Each qualifying
-  visit refreshes one flight chance and adds the owned-mine bonus: $200, $500,
-  $1,000, or $2,000 for one through four mines.
+- New rooms use balanced economy version 3. Passing Start pays $200; landing on
+  Start pays $300 instead. Each qualifying visit refreshes one flight chance and
+  adds the total owned-mine bonus: $25, $60, $100, or $150 for one through four
+  mines. These are total bonuses, not a separate payment per mine.
 - Moving backward and direct transfers to jail do not earn Start income.
 - Money Tax takes 10% of nonnegative cash. Property Tax takes 5% of the purchase
   and development value of owned properties. Taxes fund the Vacation jackpot.
 - Vacation awards the current jackpot, clears it, and skips that player's next
   turn, including when the jackpot is empty. It cancels an earned extra roll.
-- Cities, airports, and mines use the shared catalog's costs and rent schedules.
-  This preserves the original server economy, correcting the old browser's
-  conflicting prices rather than changing the economy to match its display.
+- Cities, airports, and mines keep the shared catalog's purchase prices, building
+  costs, and underlying rent schedules. The color-set rules below adjust the
+  actual rent using current ownership; displayed quotes use the same calculation
+  as the server.
 
 ## Turns, doubles, and jail
 
@@ -36,6 +38,16 @@ the source of truth; the browser displays the same prices and legal choices.
 - An unowned property may be purchased when landed on, with zero, one, or two
   initial houses where applicable. Passing leaves it with the bank.
 - Houses do not require a complete color set. A hotel does require that set.
+- Owning the complete color set immediately doubles rent on its undeveloped
+  cities. One through four houses use their normal rent, without doubling.
+- A hotel charges hotel rent only while its owner holds the complete color set.
+  If that set is broken, the hotel remains built but charges four-house rent.
+  Restoring the full set immediately restores hotel rent, with no rebuilding
+  charge. This applies to trades, bank sales, Risk losses and other ownership
+  changes. An inactive hotel still counts as five building payments for property
+  tax and liquidation value; no building is removed or refunded.
+- The ownership rule is checked when a landing is charged. An already-charged
+  rent or debt remains the original obligation; later trades do not reprice it.
 - Development is capped at four houses or one hotel, represented as level five.
 - Whole properties, including their development, can be sold back to the bank
   for 75% of their combined purchase/development cost, rounded down.
@@ -98,7 +110,20 @@ state, and does not silently treat a failed command as a success.
 
 ## Scope
 
-These defaults resolve previously ambiguous behavior conservatively. They are
-documented product decisions, not claims of compliance with classic Monopoly.
-Balance changes, new decks, classic-mode rules, and multi-server scaling should
-be separately specified and tested.
+These are documented custom-game decisions, not classic Monopoly compliance.
+The balance package reduces recurring bank income and rewards sustained color
+sets; it does not guarantee a finishing time or equal outcomes under every
+strategy. The last active player still wins, without a fixed round/time cap.
+
+### Existing saved games
+
+New rooms have `rulesVersion: 3`. Saved version-2 game snapshots whose economy
+version is missing, or explicitly `2`, keep their original $750/$1,000 Start
+income and $200/$500/$1,000/$2,000 total mine bonuses. In those legacy rooms,
+undeveloped sets do not double rent and existing hotels retain hotel rent even
+if the set breaks. Their balances, buildings, offers, and already-charged debts
+are not converted. The interface labels the legacy economy.
+
+Create a **new room** to use the balanced package. Rebuilding/restarting alone
+does not change an existing room's economy. The strict-before-next-airport
+boundary remains in force for new flight commands in both economies.
