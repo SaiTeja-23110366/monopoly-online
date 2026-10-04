@@ -108,6 +108,41 @@ Previously cancelled offers are not resurrected. Browser gameplay/visual checks
 remain unverified for the localhost restriction documented above; no bypass,
 merge or deployment was performed.
 
+## Airport destination boundary (2026-10-04)
+
+Flights now end strictly before the next clockwise airport. No airport is a
+flight destination, whether unowned, owned by the flyer, or owned by an opponent.
+The four legal segments contain 14, 12, 10, and 16 destinations respectively;
+Airport 4 wraps past Start and stops at square 5. The server independently
+checks the canonical segment before charging a ticket or consuming a chance.
+The flight panel, deed information, and rules dialog use the same explanation.
+Prices, rent, mine income, color-set benefits, trades, and layout are unchanged.
+
+The final local `npm run check` passed on Node 24.19.0: **74 server tests and
+51 client tests passed**, zero failures, with **five real-Redis tests skipped**
+because this workspace has no Redis service. Both type checks, lint, both
+production builds, packaged HTTP/Socket.IO smoke, and `git diff --check` passed.
+Coverage includes all 52 legal destinations, every excluded airport endpoint
+under all ownership states, atomic rejection even with a stale/tampered quote,
+the last allowed square in every segment, and rendered menu/deed explanations.
+Independent review additionally exercised 312 flight/ownership combinations
+with exact free/$400/$700 charges and preserved pending trades.
+
+Saved version-2 rooms are handled narrowly: an exact old inclusive flight quote
+is trimmed to the current legal destinations on recovery. Corrupt or reordered
+quotes are not repaired. A flight that was already committed under the old rule
+finishes its accepted landing, and its historical movement event stays valid;
+it is not refunded or replayed. Engine tests cover all four old endpoints,
+idempotent migration and malformed inputs. Room-manager restart tests cover
+all four legacy prompts and verify that new airport-endpoint commands reject.
+No snapshot-format reset or change to existing ownership/economics is needed.
+
+Rebuild both client and server and restart the server for rollout. Finish
+disposable memory-store games before restarting. Browser gameplay remains
+unverified because of the previously documented localhost restriction; it was
+not bypassed. This verification does not establish economic balance or match
+duration, which need separate simulation and human playtesting.
+
 ## Browser checks still required before release
 
 ### Viewport-fit desktop board (2026-10-04)

@@ -45,7 +45,9 @@ the source of truth; the browser displays the same prices and legal choices.
 ## Airports and cards
 
 - A flight requires a flight chance and a ticket. The destination must be in the
-  clockwise segment after the current airport, up to and including the next one.
+  clockwise segment strictly after the current airport and strictly before the
+  next one. Airports themselves are never flight destinations, including when
+  they are unowned. Airport 4's segment wraps past Start and stops at square 5.
 - The ticket costs $400, or $700 from airport square 45, and is paid to its owner.
   At one's own airport this is a self-payment, so the net cost is zero; a flight
   chance is still used. Flying does not collect Start rewards.
