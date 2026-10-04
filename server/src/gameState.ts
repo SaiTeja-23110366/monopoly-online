@@ -359,7 +359,6 @@ export class MonopolyGame {
     requireRule(player.money >= cost, 'INSUFFICIENT_FUNDS', `You need $${cost} for this purchase.`);
     player.money -= cost; property.ownerId = player.id; property.houses += houses;
     this.log(`${player.name} ${mode === 'buy' ? 'bought' : 'upgraded'} ${square.fullName}${property.houses === RULES.hotelLevel ? ' with a hotel' : houses ? ` with ${houses} new house(s)` : ''} for $${cost}.`);
-    this.cancelInvalidTrades();
     this.continueLanding(square.type === 'railroad' ? { kind: 'flight', airportId: square.id } : FINISH);
   }
   private finishLanding(): void {
@@ -421,7 +420,6 @@ export class MonopolyGame {
     }
     player.inJail = false; player.jailTurns = 0;
     this.log(`${player.name} ${withCard ? 'used a Get Out of Jail card' : `paid the $${RULES.jailFine} fine`}. Roll to move.`);
-    this.cancelInvalidTrades();
   }
   private charge(player: Player, amount: number, creditorId: string | null, toJackpot: boolean, reason: string, continuation: LandingContinuation): DebtRecord | null {
     const paid = Math.min(Math.max(0, player.money), amount);
@@ -468,7 +466,6 @@ export class MonopolyGame {
     this.returnToBank(property);
     this.settleDebtIncome(beforeMoney);
     this.log(`${player.name} sold ${BOARD_DATA[index].fullName}, including its buildings, for $${amount} (75%).`);
-    this.cancelInvalidTrades();
   }
   private applyCard(player: Player): void {
     const card = this.requirePhase('card').card;
@@ -503,7 +500,7 @@ export class MonopolyGame {
         this.log('No eligible properties for this Risk card.'); break;
       }
     }
-    this.cancelInvalidTrades(); this.finishLanding();
+    this.finishLanding();
   }
   private absorbShield(property: PropertyState): boolean {
     if (!property.protected) return false;
@@ -518,12 +515,12 @@ export class MonopolyGame {
     requireRule(action === 'sabotage' ? property.ownerId && property.ownerId !== player.id : property.ownerId === player.id && !property.protected, 'INVALID_TARGET', 'This property is no longer an eligible target.');
     if (action === 'protect') { property.protected = true; this.log(`${player.name} shielded ${BOARD_DATA[index].fullName}.`); }
     else if (!this.absorbShield(property)) { this.returnToBank(property); this.log(`${player.name} sabotaged ${BOARD_DATA[index].fullName}.`); }
-    this.cancelInvalidTrades(); this.finishLanding();
+    this.finishLanding();
   }
   private advanceTurn(): void {
     if (this.checkWinner()) return;
-    for (const trade of Object.values(this.state.trades)) if (trade.status === 'pending') trade.status = 'cancelled';
-    this.state.activeTradeId = null;
+    // Offers belong to their participants, not the turn. Keep even temporarily
+    // unaffordable offers pending; acceptance rechecks current cash/cards/deeds.
     // Two passes suffice even if every active player has one Vacation skip pending.
     for (let offset = 1; offset <= this.state.players.length * 2; offset++) {
       const index = (this.state.turnIndex + offset) % this.state.players.length;
@@ -543,7 +540,11 @@ export class MonopolyGame {
     player.money = Math.max(0, player.money);
     player.getOutOfJailCards = 0; player.flightChances = 0;
     for (const property of this.owned(player.id)) this.returnToBank(property);
-    for (const trade of Object.values(this.state.trades)) if (trade.status === 'pending' && [trade.initiatorId, trade.targetId].includes(player.id)) trade.status = 'cancelled';
+    for (const trade of Object.values(this.state.trades)) {
+      if (trade.status !== 'pending' || ![trade.initiatorId, trade.targetId].includes(player.id)) continue;
+      trade.status = 'cancelled';
+      this.log(`Trade between ${this.getPlayer(trade.initiatorId)!.name} and ${this.getPlayer(trade.targetId)!.name} closed because ${player.name} ${status === 'bankrupt' ? 'went bankrupt' : 'left the game'}.`);
+    }
     this.state.activeTradeId = this.state.activeTradeId && this.state.trades[this.state.activeTradeId]?.status === 'pending' ? this.state.activeTradeId : null;
     if (this.state.hostId === player.id) this.state.hostId = this.state.players.find(p => p.status === 'active')?.id ?? null;
     this.log(`${player.name} ${status === 'bankrupt' ? 'went bankrupt' : 'forfeited'}.`);
@@ -649,10 +650,10 @@ export class MonopolyGame {
     target.getOutOfJailCards += trade.offer.getOutOfJailCards - trade.request.getOutOfJailCards;
     for (const index of trade.offer.properties) this.state.properties[index].ownerId = target.id;
     for (const index of trade.request.properties) this.state.properties[index].ownerId = initiator.id;
-    trade.status = 'accepted'; this.state.activeTradeId = null;
+    trade.status = 'accepted';
+    if (this.state.activeTradeId === id) this.state.activeTradeId = null;
     this.log(`${initiator.name} and ${target.name} completed their trade.`);
     if (debtor) { this.settleDebtIncome(beforeDebtMoney); this.resumeDebt(); }
-    this.cancelInvalidTrades();
     if (this.state.phase.kind === 'buy') this.state.phase.maxHouses = this.maxBuild(this.getCurrentPlayer()!, this.state.properties[this.state.phase.propertyIndex], this.state.phase.mode === 'buy');
     if (this.state.phase.kind === 'buy') {
       const prop = this.state.properties[this.state.phase.propertyIndex];
@@ -681,16 +682,6 @@ export class MonopolyGame {
   private trimTrades(): void {
     const old = Object.values(this.state.trades).filter(trade => trade.status !== 'pending').slice(0, -40);
     for (const trade of old) delete this.state.trades[trade.id];
-  }
-  private cancelInvalidTrades(): void {
-    for (const trade of Object.values(this.state.trades)) {
-      if (trade.status !== 'pending') continue;
-      try { this.validateTrade(trade); } catch (error) {
-        if (!(error instanceof RuleError)) throw error;
-        trade.status = 'cancelled';
-        if (this.state.activeTradeId === trade.id) this.state.activeTradeId = null;
-      }
-    }
   }
 }
 
