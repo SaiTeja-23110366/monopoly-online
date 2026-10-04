@@ -69,38 +69,52 @@ client retry, and admission-proof concurrency issues.
 
 ## Browser checks still required before release
 
-### Board readability adjustment (2026-10-04)
+### Viewport-fit desktop board (2026-10-04)
 
-The desktop board now uses more of the spare horizontal space, with a 760px
-preferred minimum and a 1080px maximum when the viewport width allows. The
-desktop action column stays sticky and scrolls independently if its contents
-exceed the screen height. Tablet/phone board widths and panel stacking remain
-unchanged. Property-label size limits now allow the larger canvas to improve
-readability as well as tile size.
+The enlarged-board follow-up uses a dedicated desktop game desk at CSS viewport
+widths of at least 1100px and heights of at least 600px. The brand/room controls,
+turn/cash summary, zoom controls, browse link and footer occupy the side column
+instead of taking height above or below the board. Lobby layout is unchanged.
+
+The board is sized to the smallest of 1080px, viewport height minus 32px, and
+viewport width minus 404px (side column, column gap and outer gutters). This
+keeps the entire square board in the desktop frame instead of forcing the
+page to scroll or hiding an edge. Long action panels scroll within the side
+column. Exceptionally long notices and turn names also have bounded scroll
+areas, preserving a minimum 120px action-panel area even at the 600px cutoff.
+No root overflow clipping is used to simulate a fit.
 
 CSS-contract calculations (not browser measurements) give these board widths:
 
-| CSS viewport | Before | After |
+| CSS viewport | Previous enlarged layout | Viewport-fit desk |
 | --- | ---: | ---: |
-| 1280 × 800 | 560px | 760px |
-| 1536 × 864 | 612px | 760px |
-| 1856 × 968 | 716px | 808px |
-| 1920 × 1080 | 828px | 920px |
-| 2560 × 1440 | 844px | 1080px |
+| 1366 × 768 | 760px | 736px |
+| 1280 × 800 | 760px | 768px |
+| 1536 × 864 | 760px | 832px |
+| 1920 × 1080 | 920px | 1048px |
+| 2560 × 1440 | 1080px | 1080px |
 
-Short screens may need ordinary page scrolling to see both the top and bottom
-of the larger board. The existing Fit button resets pan/zoom inside the board;
-it does not shrink the page layout to the viewport height.
+Phone/tablet widths and very short windows retain the normal scrolling document
+layout so controls and text remain usable. Browser zoom can also select that
+fallback by reducing the CSS viewport. A no-page-scroll promise does not apply
+to every possible screen/zoom/font configuration. The existing Fit button
+resets the board's pan/zoom; the desktop frame independently fits the canvas.
 
-The complete local `npm run check` passed after this CSS-only UI adjustment:
-39 client tests and 63 server tests passed, alongside both
-type checks, client lint, both production builds, and packaged smoke. The four
-new tests check responsive CSS contracts and token-anchor geometry at sizes
-from 296px to 1080px. The local environment had no Redis binary/endpoint, so
-four real-Redis tests were skipped here; the unchanged CI workflow runs those tests
-with its Redis service. This is not a new browser visual sign-off: the earlier
-managed-cloud localhost block has not been bypassed. Verify the larger board, sticky
-sidebar, scroll behavior, zoom/fit, and resize behavior in the local preview.
+The complete local `npm run check` passed after this client-only layout change:
+42 client tests and 63 server tests passed, alongside both type checks, client
+lint, both production builds, and packaged smoke. Seven layout/geometry tests
+check responsive CSS contracts, viewport bounds, side-control placement, the
+worst-case chrome height budget, mobile fallback and token anchors at sizes
+from 296px to 1080px. These are source-level calculations, not browser pixels.
+The local environment has no Redis endpoint, so four real-Redis tests were
+skipped; the unchanged CI workflow runs them using its Redis service.
+
+This is not a new browser visual sign-off: the earlier managed-cloud localhost
+block has not been bypassed. Verify the full desktop board without page scroll,
+side-panel keyboard reachability, long names plus both notices, zoom/fit,
+resizing, and mobile fallback in the local preview. In particular, check that
+the main/board landmarks retain their semantics with the desktop
+`display: contents` layout in supported browser/screen-reader combinations.
 
 Run the built app locally in an unrestricted development browser. Use two
 isolated profiles/incognito contexts; tabs sharing browser storage intentionally
@@ -108,7 +122,7 @@ represent the same seat. These are **pending manual checks**, not passed results
 
 ### Desktop and mobile layout
 
-- [ ] Check 1280×800 and 1536×864 desktop, 768×1024 tablet, and 320/375/390px
+- [ ] Check 1366×768, 1280×800, 1536×864 and 1920×1080 desktop, 768×1024 tablet, and 320/375/390px
   phone widths in portrait and landscape
 - [ ] The fitted board is visible without a permanently overflowing sidebar;
   zoom, pan, fit, deed browsing, and the mobile panels remain reachable
