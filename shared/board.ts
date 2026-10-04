@@ -129,10 +129,10 @@ export function flightDestinations(airportId: number): number[] {
   if (index < 0) return [];
   const next = AIRPORTS[(index + 1) % AIRPORTS.length];
   const result: number[] = [];
-  for (let id = (airportId + 1) % RULES.boardSize; ; id = (id + 1) % RULES.boardSize) {
+  for (let id = (airportId + 1) % RULES.boardSize; id !== next; id = (id + 1) % RULES.boardSize) {
     result.push(id);
-    if (id === next) return result;
   }
+  return result;
 }
 export function flightTicket(airportId: number): number { return airportId === 45 ? RULES.flightTicketFinalAirport : RULES.flightTicketBase; }
 export function propertyValue(id: number, houses = 0): number {
