@@ -1,0 +1,92 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { io as connect, type Socket } from 'socket.io-client';
+import { RedisRoomStore, StorageConflictError, type RoomRecord } from '../src/roomStore';
+import { RoomManager } from '../src/roomManager';
+import { MonopolyGame } from '../src/gameState';
+import { createGameServer } from '../src/index';
+import { PLAYER_COLORS } from '../../shared/board';
+import type { ClientEvents, ServerEvents, SessionAck } from '../../shared/protocol';
+import type { CommandEnvelope, GameCommand, GameState } from '../../shared/types';
+
+const url = process.env.REDIS_TEST_URL;
+const redisTest = (name: string, fn: () => Promise<void>) => test(name, { skip: url ? false : 'Set REDIS_TEST_URL to run against an isolated real Redis service' }, fn);
+const prefix = () => `monopoly:test:${randomUUID()}:`;
+const profile = () => ({ name: 'Ada', color: PLAYER_COLORS[0], admissionSecret: randomBytes(32).toString('base64url') });
+function success(ack: SessionAck) { if (!ack.ok) throw new Error(ack.error.message); assert.equal(ack.ok, true); return ack; }
+const command = (state: GameState, action: GameCommand): CommandEnvelope => ({ commandId: randomUUID(), gameId: state.gameId, expectedVersion: state.version, expectedTurnId: state.turnId, command: action });
+
+redisTest('real Redis enforces exclusive authority, CAS and conditional lease release', async () => {
+  const namespace = prefix(); const first = new RedisRoomStore(url!, namespace); const second = new RedisRoomStore(url!, namespace);
+  await first.start();
+  try {
+    await assert.rejects(second.start(), /Another server owns/);
+    const game = new MonopolyGame('ABC234'); const now = Date.now();
+    const record: RoomRecord = { schemaVersion: 1, storageVersion: 1, createdAt: now, expiresAt: now + 60_000, state: game.state, sessions: {}, receipts: [] };
+    assert.equal(await first.create('ABC234', record), true); assert.equal(await first.create('ABC234', record), false);
+    const next = { ...record, storageVersion: 2 };
+    await first.save('ABC234', next, 1); await assert.rejects(first.save('ABC234', next, 1), StorageConflictError);
+    assert.equal((await first.load('ABC234'))?.storageVersion, 2);
+    await first.delete('ABC234', 2); await first.delete('ABC234', 2); assert.equal(await first.load('ABC234'), null);
+  } finally { await first.close(); await second.close(); }
+  const replacement = new RedisRoomStore(url!, namespace); await replacement.start(); assert.equal(replacement.healthy(), true); await replacement.close();
+});
+
+redisTest('real Redis TTL expiration evicts cached rooms and releases bounded capacity', async () => {
+  const manager = new RoomManager({ store: new RedisRoomStore(url!, prefix()), scheduleTimers: false, roomTtlMs: 1000, maxRooms: 1 }); await manager.start();
+  try {
+    const first = success(await manager.createRoom('first', profile())); await new Promise(resolve => setTimeout(resolve, 1150));
+    await assert.rejects(manager.inspect(first.state.roomCode), /expired/);
+    assert.equal((await manager.createRoom('second', profile())).ok, true);
+  } finally { await manager.close(); }
+});
+
+redisTest('real Redis survives process recreation after acknowledged command with secure resume and dedupe', async () => {
+  const namespace = prefix();
+  let server = await createGameServer({ store: new RedisRoomStore(url!, namespace), scheduleTimers: false, logger: () => {} });
+  let port = await server.listen(0, '127.0.0.1');
+  const a: Socket<ServerEvents, ClientEvents> = connect(`http://127.0.0.1:${port}`, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const b: Socket<ServerEvents, ClientEvents> = connect(`http://127.0.0.1:${port}`, { transports: ['websocket'], forceNew: true, reconnection: false });
+  await Promise.all([new Promise<void>(r => a.once('connect', r)), new Promise<void>(r => b.once('connect', r))]);
+  const first = success(await a.emitWithAck('create_room', profile()));
+  const second = success(await b.emitWithAck('join_room', { roomCode: first.state.roomCode, name: 'Grace', color: PLAYER_COLORS[1], admissionSecret: randomBytes(32).toString('base64url') }));
+  const request = command(second.state, { type: 'update_starting_cash', cash: 6000 });
+  const saved = await a.emitWithAck('game_command', request); assert.equal(saved.ok, true);
+  a.disconnect(); b.disconnect(); await server.close();
+  server = await createGameServer({ store: new RedisRoomStore(url!, namespace), scheduleTimers: false, logger: () => {} }); port = await server.listen(0, '127.0.0.1');
+  const resumed: Socket<ServerEvents, ClientEvents> = connect(`http://127.0.0.1:${port}`, { transports: ['websocket'], forceNew: true, reconnection: false });
+  try {
+    await new Promise<void>(r => resumed.once('connect', r));
+    const session = success(await resumed.emitWithAck('resume_session', first.session)); assert.equal(session.state.startingCash, 6000); assert.equal(session.state.gameId, first.state.gameId);
+    const replay = await resumed.emitWithAck('game_command', request); assert.equal(replay.ok, true); assert.equal(replay.version, saved.version);
+    const stored = await server.rooms.inspect(first.state.roomCode); assert.equal(stored.startingCash, 6000); assert.equal(stored.players.length, 2);
+  } finally { resumed.disconnect(); await server.close(); }
+});
+
+redisTest('real Redis recovers unacknowledged admissions after restart and preserves accepted purchases and trades', async () => {
+  const namespace = prefix(); let now = Date.now();
+  const options = () => ({ store: new RedisRoomStore(url!, namespace), scheduleTimers: false, now: () => now,
+    gameFactory: (code: string) => new MonopolyGame(code, { now: () => now, dice: (): [number, number] => [1, 3] }) });
+  let manager = new RoomManager(options()); await manager.start();
+  const createRequest = profile(); const first = success(await manager.createRoom('a', createRequest));
+  const joinRequest = { ...profile(), name: 'Grace', roomCode: first.state.roomCode }; const second = success(await manager.joinRoom('b', joinRequest));
+  let state = second.state;
+  async function act(socket: string, session: typeof first.session, action: GameCommand) { const ack = await manager.execute(socket, session, command(state, action)); assert.equal(ack.ok, true, JSON.stringify(ack.error)); state = ack.state!; return ack; }
+  await act('a', first.session, { type: 'start_game' }); await act('a', first.session, { type: 'roll_dice' });
+  now = state.turnDeadline! + 1; await manager.reconcile(state.roomCode); state = await manager.inspect(state.roomCode);
+  now = state.turnDeadline! + 1; await manager.reconcile(state.roomCode); state = await manager.inspect(state.roomCode); assert.equal(state.phase.kind, 'buy');
+  await act('a', first.session, { type: 'buy_property', propertyIndex: 4, housesToBuy: 1 });
+  await act('a', first.session, { type: 'propose_trade', targetId: second.session.playerId, offer: { money: 0, properties: [4], getOutOfJailCards: 0 }, request: { money: 200, properties: [], getOutOfJailCards: 0 } });
+  const tradeId = Object.values(state.trades).find(trade => trade.status === 'pending')!.id;
+  await act('b', second.session, { type: 'accept_trade', tradeId });
+  const balances = state.players.map(p => p.money); assert.equal(state.properties[4].ownerId, second.session.playerId);
+  await manager.close(); manager = new RoomManager(options()); await manager.start();
+  try {
+    const recoveredHost = success(await manager.createRoom('new-a', createRequest));
+    const recoveredGuest = success(await manager.joinRoom('new-b', joinRequest));
+    assert.equal(recoveredHost.session.playerId, first.session.playerId); assert.equal(recoveredGuest.session.playerId, second.session.playerId);
+    assert.equal(recoveredGuest.state.players.length, 2); assert.deepEqual(recoveredGuest.state.players.map(p => p.money), balances);
+    assert.equal(recoveredGuest.state.properties[4].ownerId, second.session.playerId); assert.equal(recoveredGuest.state.properties[4].houses, 1); assert.equal(recoveredGuest.state.trades[tradeId].status, 'accepted');
+  } finally { await manager.close(); }
+});
