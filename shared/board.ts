@@ -1,3 +1,5 @@
+import type { PropertyState } from './types';
+
 export interface BoardSquare {
   id: number;
   name: string;
@@ -116,13 +118,45 @@ export const BOARD_DATA: BoardSquare[] = rawSquares.map((sq, index) => {
 });
 
 /** Custom 56-square rules. This catalog is the only economics source for both clients and the server. */
-export const RULES = Object.freeze({ version: 2, boardSize: 56, passingStart: 750, landingStart: 1000,
-  mineBonuses: [0, 200, 500, 1000, 2000] as readonly number[], jailIndex: 14, vacationIndex: 28,
+export const RULES = Object.freeze({ version: 3, boardSize: 56, passingStart: 200, landingStart: 300,
+  mineBonuses: [0, 25, 60, 100, 150] as readonly number[], jailIndex: 14, vacationIndex: 28,
   jailFine: 200, jailFailedAttempts: 3, liquidationRate: 0.75, minPlayers: 2, maxPlayers: 8,
   minStartingCash: 500, maxStartingCash: 10000, moneyTaxRate: 0.1, propertyTaxRate: 0.05,
   initialHouseLimit: 2, maxHouses: 4, hotelLevel: 5, hotelRequiresFullGroup: true,
+  fullSetBaseRentMultiplier: 2, hotelRentRequiresFullGroup: true,
   flightChanceLimit: 1, flightChanceRefresh: 1, flightsCollectStartIncome: false,
   flightTicketBase: 400, flightTicketFinalAirport: 700 });
+/** Persisted games keep their original economics rather than changing mid-match. */
+const LEGACY_RULES = Object.freeze({ ...RULES, version: 2, passingStart: 750, landingStart: 1000,
+  fullSetBaseRentMultiplier: 1, hotelRentRequiresFullGroup: false,
+  mineBonuses: [0, 200, 500, 1000, 2000] as readonly number[] });
+export function rulesForGame(game: { rulesVersion?: 2 | 3 }) {
+  return game.rulesVersion === 3 ? RULES : LEGACY_RULES;
+}
+export function ownsColorGroup(properties: Record<number, PropertyState>, index: number, ownerId: string | null): boolean {
+  const group = BOARD_DATA[index]?.colorGroup;
+  return !!ownerId && !!group && BOARD_DATA.filter(square => square.colorGroup === group)
+    .every(square => properties[square.id]?.ownerId === ownerId);
+}
+export function hotelActive(properties: Record<number, PropertyState>, index: number, rulesVersion?: 2 | 3): boolean {
+  const property = properties[index];
+  return !!property?.ownerId && !property.mortgaged && property.houses === RULES.hotelLevel &&
+    (!rulesForGame({ rulesVersion }).hotelRentRequiresFullGroup || ownsColorGroup(properties, index, property.ownerId));
+}
+/** The same ownership-sensitive quote is used by the server and every client. */
+export function propertyRent(properties: Record<number, PropertyState>, index: number, rulesVersion?: 2 | 3): number {
+  const square = BOARD_DATA[index], property = properties[index];
+  if (!square || !property?.ownerId || property.mortgaged) return 0;
+  if (square.type !== 'property') {
+    const count = Object.values(properties).filter(other => other.ownerId === property.ownerId &&
+      !other.mortgaged && BOARD_DATA[other.id]?.type === square.type).length;
+    return square.rent?.[Math.max(0, count - 1)] ?? 0;
+  }
+  const rules = rulesForGame({ rulesVersion }), wholeGroup = ownsColorGroup(properties, index, property.ownerId);
+  const level = property.houses === RULES.hotelLevel && rules.hotelRentRequiresFullGroup && !wholeGroup ? RULES.maxHouses : property.houses;
+  const rent = square.rent?.[level] ?? 0;
+  return level === 0 && wholeGroup ? rent * rules.fullSetBaseRentMultiplier : rent;
+}
 export const AIRPORTS = [6, 21, 34, 45] as const;
 export function flightDestinations(airportId: number): number[] {
   const index = AIRPORTS.findIndex(id => id === airportId);

@@ -75,6 +75,8 @@ export type GameEvent = {
 );
 export interface GameState {
   schemaVersion: 2;
+  /** Missing on pre-balance snapshots, which continue with economy version 2. */
+  rulesVersion?: 2 | 3;
   gameId: string;
   version: number;
   roomCode: string;
