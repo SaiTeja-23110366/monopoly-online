@@ -1,0 +1,14 @@
+.fi { display: inline-block; width: 1.33333em; line-height: 1em; background-size: contain; background-position: 50%; background-repeat: no-repeat; }
+.fi::before { content: '\00a0'; }
+.fi-br { background-image: url('flag-icons/flags/4x3/br.svg'); }
+.fi-il { background-image: url('flag-icons/flags/4x3/il.svg'); }
+.fi-it { background-image: url('flag-icons/flags/4x3/it.svg'); }
+.fi-in { background-image: url('flag-icons/flags/4x3/in.svg'); }
+.fi-au { background-image: url('flag-icons/flags/4x3/au.svg'); }
+.fi-za { background-image: url('flag-icons/flags/4x3/za.svg'); }
+.fi-de { background-image: url('flag-icons/flags/4x3/de.svg'); }
+.fi-fr { background-image: url('flag-icons/flags/4x3/fr.svg'); }
+.fi-cn { background-image: url('flag-icons/flags/4x3/cn.svg'); }
+.fi-jp { background-image: url('flag-icons/flags/4x3/jp.svg'); }
+.fi-gb { background-image: url('flag-icons/flags/4x3/gb.svg'); }
+.fi-us { background-image: url('flag-icons/flags/4x3/us.svg'); }

@@ -1,691 +1,97 @@
-import React, { useState, useEffect } from 'react';
-import { socket } from './socket';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { ArrowLeftRight, ArrowRight, Check, Crown, Dices, Flag, Globe2, HelpCircle, House, LogOut, Settings2, Trophy, Users, Wallet, WifiOff, X } from 'lucide-react';
+import { useGame } from './hooks/useGame';
 import { Lobby } from './components/Lobby';
-import { Board, TurnTimer } from './components/Board';
+import { Board } from './components/Board';
+import { ActionPanel } from './components/ActionPanel';
+import { phaseDescription } from './lib/phase';
+import { Dialog } from './components/Dialog';
 import { PropertyInfoCard } from './components/PropertyInfoCard';
-import { TradeModal } from './components/TradeModal';
-import { ViewTradeModal } from './components/ViewTradeModal';
-import { SQUARES } from './constants/boardData';
-import type { GameState, TradeOffer } from '../../shared/types';
+import { TradeModal, ViewTradeModal } from './components/TradeModal';
+import { SQUARES, RULES } from '../../shared/board';
+import type { TradeOffer } from '../../shared/types';
+import { formatMoney } from './lib/geometry';
+import { tokenSymbol } from './lib/tokens';
+import { SoundCues } from './lib/audio';
+import './App.css';
 
-const getStoredPlayerId = () => {
-  let id = localStorage.getItem('monopoly_player_id');
-  if (!id) {
-    id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    localStorage.setItem('monopoly_player_id', id);
+const media = () => matchMedia('(prefers-reduced-motion: reduce)');
+const subscribeMotion = (callback:()=>void) => { const query=media();query.addEventListener('change',callback);return()=>query.removeEventListener('change',callback); };
+const motionSnapshot = () => media().matches;
+function App() {
+  const { session, game, credentials, connection, pending, error, retryable, presentation, serverOffset } = useGame();
+  const [selected,setSelected] = useState<number|null>(null);
+  const [browse,setBrowse] = useState(false);
+  const [tab,setTab] = useState<'turn'|'players'|'trades'|'activity'>('turn');
+  const [tradeEditor,setTradeEditor] = useState<'new'|TradeOffer|null>(null);
+  const [tradeId,setTradeId] = useState<string|null>(null);
+  const [showRules,setShowRules] = useState(false);
+  const [showSettings,setShowSettings] = useState(false);
+  const [confirmLeave,setConfirmLeave] = useState(false);
+  const [confirmBankrupt,setConfirmBankrupt] = useState(false);
+  const [dismissedBankruptcy,setDismissedBankruptcy] = useState('');
+  const [uiGameId, setUiGameId] = useState(game?.gameId);
+  if (uiGameId !== game?.gameId) {
+    setUiGameId(game?.gameId); setSelected(null); setBrowse(false); setTab('turn');
+    setTradeEditor(null); setTradeId(null); setConfirmLeave(false); setConfirmBankrupt(false);
   }
-  return id;
-};
-
-export const App: React.FC = () => {
-  const [playerId] = useState(getStoredPlayerId);
-  const [gameState, setGameState] = useState<GameState | null>(null);
-  const [showPopups, setShowPopups] = useState(true);
-  const [viewingSquareIndex, setViewingSquareIndex] = useState<number | null>(null);
-  
-  // Trading Modal State
-  const [isTradeModalOpen, setIsTradeModalOpen] = useState(false);
-  const [editingTrade, setEditingTrade] = useState<TradeOffer | undefined>(undefined);
-  const [viewingTrade, setViewingTrade] = useState<TradeOffer | undefined>(undefined);
-
-  // Mobile Tab State
-  const [activeTab, setActiveTab] = useState<'board' | 'players' | 'trades' | 'log'>('board');
-
-  useEffect(() => {
-    socket.on('game_state_update', (state: GameState) => {
-      setGameState(state);
-      localStorage.setItem('monopoly_room_code', state.roomCode);
-    });
-
-    socket.on('error', (msg: string) => {
-      console.error(msg);
-      if (msg === 'Game not found' || msg === 'Player not found in this game') {
-         localStorage.removeItem('monopoly_room_code');
-      }
-    });
-
-    const roomCode = localStorage.getItem('monopoly_room_code');
-    const storedPlayerId = localStorage.getItem('monopoly_player_id');
-    if (roomCode && storedPlayerId) {
-      socket.emit('reconnect_player', { roomCode, playerId: storedPlayerId });
-    }
-
-    return () => {
-      socket.off('game_state_update');
-      socket.off('error');
-    };
-  }, []);
-
-  const handleJoin = (roomCode: string, name: string) => {
-    // Hardcoded color logic for demo; later let players pick
-    const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b'];
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    socket.emit('join_room', roomCode, playerId, name, color);
-  };
-
-  const handleChangeColor = (newColor: string) => {
-    if (gameState) {
-      socket.emit('change_color', gameState.roomCode, newColor);
-    }
-  };
-
-  const handleUpdateStartingCash = (cash: number) => {
-    if (gameState) {
-      socket.emit('update_starting_cash', gameState.roomCode, cash);
-    }
-  };
-
-  const handleStart = () => {
-    if (gameState) {
-      socket.emit('start_game', gameState.roomCode);
-    }
-  };
-
-  const handleRollDice = () => {
-    if (gameState) {
-      socket.emit('roll_dice', gameState.roomCode);
-    }
-  };
-
-  const handleOpenProposeTrade = () => {
-    setEditingTrade(undefined);
-    setIsTradeModalOpen(true);
-  };
-
-  const handleOpenCounterTrade = (trade: TradeOffer) => {
-    setEditingTrade(trade);
-    setIsTradeModalOpen(true);
-  };
-
-  const handleAcceptTrade = (tradeId: string) => {
-    if (gameState) {
-      socket.emit('accept_trade', gameState.roomCode, tradeId);
-    }
-  };
-
-  const handleRejectTrade = (tradeId: string) => {
-    if (gameState) {
-      socket.emit('reject_trade', gameState.roomCode, tradeId);
-    }
-  };
-
-  const handleBuyProperty = (houses: number) => {
-    if (gameState && gameState.awaitingBuyDecision !== null) {
-      socket.emit('buy_property', gameState.roomCode, gameState.awaitingBuyDecision, houses);
-    }
-  };
-
-  const handleUpgradeProperty = (houses: number) => {
-    if (gameState && gameState.awaitingBuyDecision !== null) {
-      socket.emit('upgrade_property', gameState.roomCode, gameState.awaitingBuyDecision, houses);
-    }
-  };
-
-  const handleSellToBank = (propertyIndex: number) => {
-    if (gameState) {
-      socket.emit('sell_property_to_bank', gameState.roomCode, propertyIndex);
-    }
-  };
-
-  const handlePassProperty = () => {
-    if (gameState) {
-      socket.emit('pass_property', gameState.roomCode);
-    }
-  };
-
-  useEffect(() => {
-    if (gameState?.awaitingBuyDecision !== null && gameState?.awaitingBuyDecision !== undefined || gameState?.activeCard !== null && gameState?.activeCard !== undefined || gameState?.awaitingFlightDecision !== null && gameState?.awaitingFlightDecision !== undefined || gameState?.awaitingSabotage || gameState?.awaitingProtection) {
-      const timer = setTimeout(() => setShowPopups(true), 1200);
-      return () => clearTimeout(timer);
-    } else {
-      setShowPopups(false);
-    }
-  }, [gameState?.awaitingBuyDecision, gameState?.activeCard, gameState?.awaitingFlightDecision, gameState?.awaitingSabotage, gameState?.awaitingProtection]);
-
-  if (!gameState) {
-    return <Lobby onJoin={handleJoin} />;
-  }
-
-
-
-  const currentPlayer = gameState.players.find(p => p.id === playerId);
-  const isMyTurn = currentPlayer?.id === gameState.players[gameState.turnIndex]?.id;
-  const isAwaitingBuy = showPopups && gameState.awaitingBuyDecision !== null;
-  const isAwaitingDebtResolution = gameState.awaitingDebtResolution === playerId;
-  const isAwaitingFlight = showPopups && gameState.awaitingFlightDecision !== null && gameState.awaitingFlightDecision !== undefined;
-  const isAwaitingSabotage = showPopups && gameState.awaitingSabotage;
-  const isAwaitingProtection = showPopups && gameState.awaitingProtection;
-  const isBankrupt = currentPlayer?.status === 'bankrupt';
-
-  let validFlightDestinations: number[] = [];
-  if (isAwaitingFlight && isMyTurn) {
-    const start = gameState.awaitingFlightDecision!;
-    let current = (start + 1) % 56;
-    while (SQUARES[current].type !== 'railroad') {
-      validFlightDestinations.push(current);
-      current = (current + 1) % 56;
-    }
-    // Include the next airport as well
-    validFlightDestinations.push(current);
-  }
-
-  const handleFlightDecision = (destIndex: number | null) => {
-    socket.emit('flight_decision', gameState.roomCode, destIndex);
-  };
-
-  const handleSquareClick = (index: number) => {
-    if (isMyTurn) {
-      if (isAwaitingSabotage) {
-         socket.emit('execute_sabotage', gameState.roomCode, index);
-         return;
-      } else if (isAwaitingProtection) {
-         socket.emit('execute_protection', gameState.roomCode, index);
-         return;
-      } else if (isAwaitingDebtResolution) {
-         socket.emit('sell_property_to_bank', gameState.roomCode, index);
-         return;
-      }
-    }
-    // View property details if not making an active move
-    setViewingSquareIndex(index);
-  };
-
-  const isJailDecision = isMyTurn && currentPlayer?.inJail && !gameState.hasRolled;
-
-  const handlePayJailFine = () => {
-    socket.emit('pay_jail_fine', gameState.roomCode);
-  };
-  const handleUseJailCard = () => {
-    socket.emit('use_jail_card', gameState.roomCode);
-  };
-
-  const buySquare = isAwaitingBuy ? SQUARES[gameState.awaitingBuyDecision!] : null;
-  const propState = isAwaitingBuy ? gameState.properties[gameState.awaitingBuyDecision!] : null;
-  const isUnowned = propState?.ownerId === null;
-  const isOwnedByMe = propState?.ownerId === playerId;
-
-  const sameColorProps = buySquare?.color ? (SQUARES as any[]).filter(s => s.color === buySquare.color).map(s => s.id) : [];
-  const ownsAll = sameColorProps.length > 0 && sameColorProps.every(id => gameState.properties[id]?.ownerId === playerId);
-  
-  const AVAILABLE_COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
-  const STARTING_CASH_OPTIONS = [1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000];
-
-  let centerContent: React.ReactNode = null;
-  if (gameState.awaitingSabotage && isMyTurn) {
-    centerContent = (
-      <div className="bg-[#161622] border-4 border-red-500 p-6 md:p-8 rounded-2xl w-[90vw] md:w-full max-w-lg shadow-[0_0_50px_rgba(220,38,38,0.5)] flex flex-col pointer-events-auto max-h-[80vh] animate-in fade-in zoom-in duration-300">
-        <div className="border-b border-white/10 pb-4 mb-4 text-center">
-          <h2 className="text-3xl font-black text-red-500 tracking-widest uppercase">SABOTAGE!</h2>
-          <p className="text-gray-400 mt-2">Select an opponent's property to destroy.</p>
-        </div>
-        <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-          {Object.values(gameState.properties).filter(p => p.ownerId && p.ownerId !== playerId && !p.protected).map(prop => {
-            const sq = SQUARES[prop.id];
-            const owner = gameState.players.find(pl => pl.id === prop.ownerId);
-            return (
-              <button 
-                key={prop.id}
-                onClick={() => socket.emit('execute_sabotage', gameState.roomCode, prop.id)}
-                className="w-full text-left bg-[#212130] hover:bg-red-900/50 p-3 rounded-lg border border-white/5 hover:border-red-500/50 transition-all group"
-              >
-                <div className="flex items-center gap-3 mb-1">
-                  {sq.color && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sq.color }}></div>}
-                  <span className="font-bold">{(sq as any).flagCode && <span className={`fi fi-${(sq as any).flagCode} mr-2`}></span>}{(sq as any).fullName || sq.name}</span>
-                </div>
-                <div className="text-xs text-gray-400 flex justify-between">
-                  <span>Owner: {owner?.name}</span>
-                  <span>{prop.houses > 0 ? (prop.houses === 5 ? 'Hotel' : `${prop.houses} Houses`) : 'Base'}</span>
-                </div>
-              </button>
-            );
-          })}
-          {Object.values(gameState.properties).filter(p => p.ownerId && p.ownerId !== playerId && !p.protected).length === 0 && (
-            <div className="text-center p-4 text-gray-400">No valid targets! Wait for timeout.</div>
-          )}
-        </div>
-      </div>
-    );
-  } else if (gameState.awaitingProtection && isMyTurn) {
-    centerContent = (
-      <div className="bg-[#161622] border-4 border-cyan-500 p-6 md:p-8 rounded-2xl w-[90vw] md:w-full max-w-lg shadow-[0_0_50px_rgba(6,182,212,0.5)] flex flex-col pointer-events-auto max-h-[80vh] animate-in fade-in zoom-in duration-300">
-        <div className="border-b border-white/10 pb-4 mb-4 text-center">
-          <h2 className="text-3xl font-black text-cyan-400 tracking-widest uppercase">PROTECT!</h2>
-          <p className="text-gray-400 mt-2">Select one of your properties to shield.</p>
-        </div>
-        <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-          {Object.values(gameState.properties).filter(p => p.ownerId === playerId && !p.protected).map(prop => {
-            const sq = SQUARES[prop.id];
-            return (
-              <button 
-                key={prop.id}
-                onClick={() => socket.emit('execute_protection', gameState.roomCode, prop.id)}
-                className="w-full text-left bg-[#212130] hover:bg-cyan-900/50 p-3 rounded-lg border border-white/5 hover:border-cyan-500/50 transition-all group"
-              >
-                <div className="flex items-center gap-3 mb-1">
-                  {sq.color && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sq.color }}></div>}
-                  <span className="font-bold">{(sq as any).flagCode && <span className={`fi fi-${(sq as any).flagCode} mr-2`}></span>}{(sq as any).fullName || sq.name}</span>
-                </div>
-                <div className="text-xs text-gray-400">
-                  {prop.houses > 0 ? (prop.houses === 5 ? 'Hotel' : `${prop.houses} Houses`) : 'Base'}
-                </div>
-              </button>
-            );
-          })}
-          {Object.values(gameState.properties).filter(p => p.ownerId === playerId && !p.protected).length === 0 && (
-            <div className="text-center p-4 text-gray-400">No valid targets! Wait for timeout.</div>
-          )}
-        </div>
-      </div>
-    );
-  } else if (isAwaitingDebtResolution) {
-    centerContent = (
-      <div className="bg-[#161622] border-4 border-red-600 p-6 md:p-8 rounded-2xl w-[90vw] md:w-full max-w-lg shadow-[0_0_50px_rgba(220,38,38,0.5)] flex flex-col pointer-events-auto max-h-[80vh] animate-in fade-in zoom-in duration-300">
-        <div className="border-b border-white/10 pb-4 mb-4 text-center">
-          <h2 className="text-3xl font-black text-red-500 tracking-widest uppercase mb-2">DEBT RESOLUTION</h2>
-          <p className="text-gray-300 text-sm">
-            Balance: <span className="font-bold text-red-400">${currentPlayer?.money}</span>
-            <br/>Sell properties to the bank or trade with players!
-          </p>
-        </div>
-        <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-          {Object.values(gameState.properties).filter(p => p.ownerId === playerId).map(prop => {
-            const sq = SQUARES[prop.id];
-            const baseValue = sq.price || 0;
-            const houseValue = prop.houses * ((sq as any).housePrice || 0);
-            const sellValue = Math.floor((baseValue + houseValue) * 0.75);
-            
-            return (
-              <div key={prop.id} className="bg-[#212130] p-3 rounded-lg border border-white/5 flex flex-col gap-2">
-                <div className="flex items-center gap-3">
-                  {sq.color && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: sq.color }}></div>}
-                  <div>
-                    <p className="font-bold">{(sq as any).flagCode && <span className={`fi fi-${(sq as any).flagCode} mr-2`}></span>}{(sq as any).fullName || sq.name}</p>
-                    <p className="text-xs text-gray-400">
-                      {prop.houses > 0 ? `${prop.houses === 5 ? 'Hotel' : prop.houses + ' Houses'}` : 'Base'}
-                    </p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => handleSellToBank(prop.id)}
-                  className="w-full bg-red-900/50 hover:bg-red-600 text-red-200 hover:text-white py-2 rounded text-sm font-bold transition-colors border border-red-500/30"
-                >
-                  Sell to Bank for ${sellValue}
-                </button>
-              </div>
-            );
-          })}
-          {Object.values(gameState.properties).filter(p => p.ownerId === playerId).length === 0 && (
-            <div className="text-center p-4 bg-red-950/30 rounded border border-red-900/50">
-              <p className="text-red-400 font-bold mb-1">No properties left!</p>
-              <p className="text-gray-400 text-xs">You are bankrupt and will be eliminated.</p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  } else if (viewingSquareIndex !== null && !isAwaitingBuy && !isAwaitingFlight && !isJailDecision) {
-    centerContent = (
-      <PropertyInfoCard square={SQUARES[viewingSquareIndex]} onClose={() => setViewingSquareIndex(null)} />
-    );
-  } else if (isAwaitingBuy && isMyTurn && buySquare && propState) {
-    centerContent = (
-      <div className="bg-[#161622] border-2 border-indigo-500 p-6 md:p-8 rounded-2xl w-[90vw] md:w-full max-w-md shadow-[0_0_50px_rgba(99,102,241,0.5)] text-center transform scale-105 transition-transform animate-in fade-in zoom-in duration-300 pointer-events-auto max-h-[80vh] overflow-y-auto">
-        <h2 className="text-3xl font-black mb-2 text-white tracking-widest uppercase flex items-center justify-center gap-2">
-          {(buySquare as any).flagCode && <span className={`fi fi-${(buySquare as any).flagCode} text-xl shadow-[0_2px_4px_rgba(0,0,0,0.5)]`}></span>}
-          {(buySquare as any).fullName || buySquare.name}
-        </h2>
-        {buySquare.color && <div className="w-16 h-2 mx-auto mb-4 rounded-full" style={{ backgroundColor: buySquare.color }}></div>}
-        {isUnowned ? (
-          <>
-            <p className="text-gray-300 mb-4 text-lg">Choose purchase option:</p>
-            <div className="flex flex-col gap-3 mb-6">
-              <button onClick={() => handleBuyProperty(0)} disabled={(currentPlayer?.money || 0) < (buySquare.price || 0)} className="flex justify-between px-4 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-bold text-white transition-colors">
-                <span>Base Property <span className="text-gray-400 text-xs ml-2 font-normal">(Rent: ${(buySquare as any).rent?.[0] || 0})</span></span><span className="text-[#4ade80]">${buySquare.price}</span>
-              </button>
-              {(buySquare as any).housePrice && (
-                <>
-                  <button onClick={() => handleBuyProperty(1)} disabled={(currentPlayer?.money || 0) < (buySquare.price || 0) + (buySquare as any).housePrice} className="flex justify-between px-4 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-bold text-white transition-colors">
-                    <span>Property + 1 House <span className="text-gray-400 text-xs ml-2 font-normal">(Rent: ${(buySquare as any).rent?.[1] || 0})</span></span><span className="text-[#4ade80]">${(buySquare.price || 0) + (buySquare as any).housePrice}</span>
-                  </button>
-                  <button onClick={() => handleBuyProperty(2)} disabled={(currentPlayer?.money || 0) < (buySquare.price || 0) + (2 * (buySquare as any).housePrice)} className="flex justify-between px-4 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-bold text-white transition-colors">
-                    <span>Property + 2 Houses <span className="text-gray-400 text-xs ml-2 font-normal">(Rent: ${(buySquare as any).rent?.[2] || 0})</span></span><span className="text-[#4ade80]">${(buySquare.price || 0) + (2 * (buySquare as any).housePrice)}</span>
-                  </button>
-                </>
-              )}
-            </div>
-          </>
-        ) : isOwnedByMe ? (
-          <>
-            <p className="text-gray-300 mb-4 text-lg">Upgrade Property:</p>
-            <div className="flex flex-col gap-3 mb-6">
-              {(buySquare as any).housePrice && propState.houses < 4 && (
-                Array.from({ length: 4 - (propState.houses || 0) }).map((_, i) => {
-                  const numHouses = i + 1;
-                  const cost = numHouses * (buySquare as any).housePrice!;
-                  return (
-                    <button key={`upgrade-${numHouses}`} onClick={() => handleUpgradeProperty(numHouses)} disabled={(currentPlayer?.money || 0) < cost} className="flex justify-between px-4 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-bold text-white transition-colors">
-                      <span>Buy {numHouses} House{numHouses > 1 ? 's' : ''} <span className="text-gray-200 text-xs ml-2 font-normal">(Rent: ${(buySquare as any).rent?.[(propState.houses || 0) + numHouses] || 0})</span></span><span className="text-[#4ade80]">${cost}</span>
-                    </button>
-                  );
-                })
-              )}
-              {(buySquare as any).housePrice && propState.houses === 4 && ownsAll && (
-                <button onClick={() => handleUpgradeProperty(1)} disabled={(currentPlayer?.money || 0) < (buySquare as any).housePrice} className="flex justify-between px-4 py-3 bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-bold text-white transition-colors">
-                  <span>Upgrade to Hotel <span className="text-gray-200 text-xs ml-2 font-normal">(Rent: ${(buySquare as any).rent?.[5] || 0})</span></span><span className="text-[#4ade80]">${(buySquare as any).housePrice}</span>
-                </button>
-              )}
-              {!ownsAll && propState.houses === 4 && <p className="text-yellow-400 text-sm font-bold">You need the full color set to build a Hotel.</p>}
-            </div>
-          </>
-        ) : null}
-        <div className="flex gap-4">
-          <button onClick={handlePassProperty} className="flex-1 bg-transparent border-2 border-gray-600 hover:border-gray-400 text-gray-300 py-3 rounded-lg font-bold transition-colors">Pass / End Turn</button>
-        </div>
-        {(currentPlayer?.money || 0) < (buySquare.price || 0) && isUnowned && <p className="text-red-400 text-sm mt-3 font-bold">You cannot afford the base property.</p>}
-      </div>
-    );
-  } else if (isAwaitingFlight && isMyTurn && !isAwaitingDebtResolution) {
-    centerContent = (
-      <div className="bg-[#161622] border-2 border-cyan-500 p-6 md:p-8 rounded-2xl w-[90vw] md:w-full max-w-3xl shadow-[0_0_50px_rgba(6,182,212,0.5)] animate-in fade-in zoom-in duration-300 pointer-events-auto max-h-[80vh] overflow-y-auto">
-        <h2 className="text-3xl font-black mb-2 text-white text-center tracking-widest uppercase">FLIGHT TERMINAL</h2>
-        <p className="text-gray-300 mb-8 text-center text-lg">
-          You have <span className="text-cyan-400 font-bold">{currentPlayer?.flightChances} Flight Chance(s)</span> remaining.<br/>Buy a ticket for <span className="text-[#4ade80] font-bold">${gameState.awaitingFlightDecision === 45 ? 700 : 400}</span> to fly to any destination before the next airport!
-        </p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-h-[50vh] overflow-y-auto mb-6 pr-2">
-          {validFlightDestinations.map(destIndex => {
-            const sq = SQUARES[destIndex];
-            return (
-              <button key={destIndex} onClick={() => handleFlightDecision(destIndex)} disabled={(currentPlayer?.money || 0) < (gameState.awaitingFlightDecision === 45 ? 700 : 400)} className="flex flex-col items-center justify-center bg-[#212130] hover:bg-[#2a2a3b] border border-white/10 hover:border-cyan-500/50 p-4 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed group">
-                {sq.color && <div className="w-8 h-2 rounded-full mb-2" style={{ backgroundColor: sq.color }}></div>}
-                <span className="font-bold text-center text-sm group-hover:text-cyan-400 transition-colors">{sq.name}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex gap-4">
-          <button onClick={() => handleFlightDecision(null)} className="flex-1 bg-transparent border-2 border-gray-600 hover:border-gray-400 text-gray-300 py-3 rounded-lg font-bold transition-colors">No Thanks (Pass)</button>
-        </div>
-      </div>
-    );
-  } else if (isJailDecision && !gameState.activeCard) {
-    centerContent = (
-      <div className="bg-[#161622] border-4 border-orange-500 p-6 md:p-8 rounded-2xl w-[90vw] md:w-full max-w-md shadow-[0_0_50px_rgba(249,115,22,0.5)] animate-in fade-in zoom-in duration-300 text-center pointer-events-auto max-h-[80vh] overflow-y-auto">
-        <h2 className="text-4xl font-black mb-2 text-white tracking-widest uppercase">YOU ARE IN JAIL</h2>
-        <p className="text-gray-300 mb-8 text-lg">
-          You must get out before you can move! You've been in jail for <span className="font-bold text-orange-400">{currentPlayer?.jailTurns}</span> turn(s).
-        </p>
-        <div className="flex flex-col gap-4">
-          <button onClick={handlePayJailFine} disabled={(currentPlayer?.money || 0) < 200} className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed py-4 rounded-xl font-bold text-white transition-colors text-lg flex justify-between px-6">
-            <span>Pay Fine</span><span className="text-orange-200">$200</span>
-          </button>
-          <button onClick={handleUseJailCard} disabled={(currentPlayer?.getOutOfJailCards || 0) === 0} className="w-full bg-[#fb923c] hover:bg-[#fdba74] disabled:opacity-50 disabled:cursor-not-allowed py-4 rounded-xl font-bold text-black transition-colors text-lg shadow-[0_0_15px_rgba(251,146,60,0.5)] flex justify-between px-6">
-            <span>Use Jail Card</span><span className="font-black bg-black/20 px-2 rounded">{currentPlayer?.getOutOfJailCards || 0}</span>
-          </button>
-          <button onClick={handleRollDice} className="w-full bg-indigo-600 hover:bg-indigo-500 py-4 rounded-xl font-black text-white transition-transform hover:scale-105 active:scale-95 text-xl mt-2 border border-white/20">
-            Roll for Doubles
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-
-  return (
-    <div className="flex w-full h-screen bg-[#0a0a0f] text-white overflow-hidden relative pb-16 md:pb-0">
-      
-      {/* Debt Resolution Logic Moved To Center Board Area */}
-
-      {/* Card logic is now handled in Board.tsx center area */}
-
-      {/* Bankrupt Overlay */}
-      {isBankrupt && (
-        <div className="fixed inset-0 z-[80] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-xl animate-in fade-in duration-1000">
-          <h1 className="text-6xl md:text-8xl font-black text-red-600 mb-4 animate-pulse uppercase tracking-widest text-center" style={{ textShadow: '0 0 40px rgba(220,38,38,0.6)' }}>
-            BANKRUPT
-          </h1>
-          <p className="text-xl md:text-2xl text-gray-400 text-center max-w-lg">
-            You have run out of money and assets. You are officially eliminated from the game.
-          </p>
-          <div className="mt-12 text-sm text-gray-600">You can still watch the rest of the game unfold.</div>
-        </div>
-      )}
-
-      {/* Modals were moved to the bottom */}
-
-      {/* Left Sidebar - Logs & Trades */}
-      <div className="w-64 bg-[#161622] border-r border-white/5 flex flex-col p-4">
-        
-        {/* Active Trades Section */}
-        <h2 className="text-xl font-bold mb-4 text-blue-400">Active Trades</h2>
-        <div className="space-y-4 mb-6">
-          {Object.values(gameState.trades)
-            .filter(t => t.status === 'pending' || t.status === 'countered')
-            .map((trade) => {
-              const initiator = gameState.players.find(p => p.id === trade.initiatorId)?.name || 'Someone';
-              const target = gameState.players.find(p => p.id === trade.targetId)?.name || 'Someone';
-
-              return (
-                <div 
-                  key={trade.id} 
-                  className="bg-[#212130] p-3 rounded-lg border border-blue-500/30 cursor-pointer hover:bg-[#2a2a3b] hover:border-blue-500 transition-colors"
-                  onClick={() => setViewingTrade(trade)}
-                >
-                  <p className="text-xs text-gray-300 mb-2">
-                    <span className="font-bold text-white">{initiator}</span> wants to trade with <span className="font-bold text-white">{target}</span>
-                  </p>
-                  <div className="text-xs bg-[#161622] p-2 rounded">
-                    <span className="text-red-400">Offers:</span> ${trade.offer.money} <br/>
-                    <span className="text-green-400">Requests:</span> ${trade.request.money}
-                  </div>
-                  <p className="text-[0.65rem] text-blue-400 mt-2 text-center underline decoration-blue-500/50 underline-offset-2">Click to view details</p>
-                </div>
-              );
-          })}
-          {Object.values(gameState.trades).filter(t => t.status === 'pending' || t.status === 'countered').length === 0 && (
-            <p className="text-sm text-gray-500 italic">No active trades.</p>
-          )}
-        </div>
-
-        <h2 className="text-xl font-bold mb-4 text-[#a3e635]">Activity Log</h2>
-        <div className="flex-1 overflow-y-auto space-y-2 text-sm text-gray-400 pr-2">
-          {[...gameState.logs].reverse().map((log, i) => (
-            <div key={i} className="bg-[#212130] p-2 rounded">{log}</div>
-          ))}
-        </div>
-      </div>
-
-      {/* Main Board Area */}
-      <div className="flex-1 flex items-center justify-center relative">
-        {gameState.state === 'lobby' && (
-          <div className="absolute inset-0 bg-black/80 z-50 flex flex-col items-center justify-center backdrop-blur-sm">
-            <h1 className="text-4xl font-black mb-4">Room Code: <span className="text-[#a3e635]">{gameState.roomCode}</span></h1>
-            <p className="text-xl text-gray-300 mb-8">Waiting for players to join...</p>
-            
-            <div className="flex flex-col gap-6 mb-8 w-full max-w-2xl">
-              {gameState.players.map((p) => (
-                <div key={p.id} className="flex flex-col gap-3 bg-[#212130] p-4 rounded-xl border-2" style={{ borderColor: p.color }}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-5 h-5 rounded-full" style={{ backgroundColor: p.color }}></div>
-                    <span className="font-bold text-xl">{p.name} {p.id === playerId ? '(You)' : ''}</span>
-                  </div>
-                  
-                  {p.id === playerId && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      <span className="text-sm text-gray-400 mr-2 flex items-center">Pick Color:</span>
-                      {AVAILABLE_COLORS.map(c => (
-                        <button 
-                          key={c}
-                          onClick={() => handleChangeColor(c)}
-                          className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${p.color === c ? 'border-white scale-110' : 'border-transparent'}`}
-                          style={{ backgroundColor: c }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {gameState.players[0]?.id === playerId ? (
-              <div className="bg-[#212130] p-4 rounded-xl border border-white/10 mt-4 text-center w-full max-w-2xl">
-                <p className="text-gray-300 font-bold mb-3">Starting Cash</p>
-                <div className="flex flex-wrap gap-2 justify-center mb-6">
-                  {STARTING_CASH_OPTIONS.map(c => (
-                    <button 
-                      key={c}
-                      onClick={() => handleUpdateStartingCash(c)}
-                      className={`px-4 py-2 rounded-lg font-bold transition-all ${gameState.startingCash === c ? 'bg-green-600 text-white shadow-lg scale-105' : 'bg-[#161622] text-gray-400 hover:bg-gray-700'}`}
-                    >
-                      ${c}
-                    </button>
-                  ))}
-                </div>
-                <button 
-                  onClick={handleStart}
-                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed px-8 py-3 rounded-xl font-bold text-lg transition-colors shadow-[0_0_20px_rgba(79,70,229,0.4)] hover:shadow-[0_0_30px_rgba(79,70,229,0.6)] w-full"
-                >
-                  Start Game (Dev Mode)
-                </button>
-              </div>
-            ) : (
-              <div className="text-center mt-4 w-full max-w-2xl">
-                <p className="text-gray-400">Starting cash: <span className="font-bold text-green-400">${gameState.startingCash}</span></p>
-                <p className="text-gray-500 italic mt-2">Waiting for host to start...</p>
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* Action Slides Moved To Center Board Area */}
-        
-        {/* Board Area */}
-        <div className="w-full h-[60vh] md:h-full relative overflow-hidden bg-[#0a0a0f]">
-          <Board 
-            gameState={gameState} 
-            onSquareClick={handleSquareClick}
-            onRollDice={isMyTurn && !gameState.hasRolled && gameState.state === 'playing' ? handleRollDice : undefined}
-            centerContent={centerContent}
-            playerId={playerId}
-          />
-          
-          {/* Mobile Floating Action Drawer */}
-          {gameState.state === 'playing' && isMyTurn && activeTab === 'board' && (
-            <div className="md:hidden absolute bottom-4 left-4 right-4 bg-[#212130] rounded-xl border border-white/10 p-4 flex flex-col gap-3 shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-[45]">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-gray-300">It's your turn!</h3>
-                <TurnTimer gameState={gameState} playerId={playerId} variant="mobile" />
-              </div>
-              
-              {/* Timer only, Roll Dice button moved to center of board */}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Mobile Bottom Navigation Bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-[#161622] border-t border-white/10 flex items-center justify-around z-[50]">
-        <button onClick={() => setActiveTab('board')} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'board' ? 'text-cyan-400' : 'text-gray-400'}`}>
-          <span className="text-xl leading-none">🎲</span>
-          <span className="text-[10px] font-bold mt-1 uppercase">Board</span>
-        </button>
-        <button onClick={() => setActiveTab('players')} className={`flex flex-col items-center justify-center w-full h-full ${activeTab === 'players' ? 'text-cyan-400' : 'text-gray-400'}`}>
-          <span className="text-xl leading-none">👥</span>
-          <span className="text-[10px] font-bold mt-1 uppercase">Players</span>
-        </button>
-        <button onClick={() => setIsTradeModalOpen(true)} className={`flex flex-col items-center justify-center w-full h-full text-gray-400`}>
-          <span className="text-xl leading-none">🤝</span>
-          <span className="text-[10px] font-bold mt-1 uppercase">Trade</span>
-        </button>
-      </div>
-
-      {/* Right Sidebar - Players & Controls */}
-      <div className={`w-full md:w-72 bg-[#161622] border-l border-white/5 flex-col p-4 overflow-y-auto ${activeTab === 'players' ? 'flex' : 'hidden md:flex'}`}>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Players</h2>
-          <button 
-            onClick={() => {
-              socket.emit('leave_game', gameState.roomCode);
-              localStorage.removeItem('monopoly_room_code');
-              window.location.reload();
-            }}
-            className="px-2 py-1 bg-red-900/50 hover:bg-red-600 text-red-200 hover:text-white rounded text-xs font-bold uppercase tracking-wider transition-colors border border-red-500/30"
-          >
-            Exit Game
-          </button>
-        </div>
-        <div className="flex-1 space-y-4">
-          {gameState.players.filter(p => p.status !== 'bankrupt').map((p) => (
-            <div key={p.id} className={`p-4 rounded-xl border-2 transition-all ${gameState.players[gameState.turnIndex]?.id === p.id ? 'border-[#a3e635] bg-[#212130]' : 'border-transparent bg-[#1a1a2e]'}`}>
-              <div className="flex justify-between items-center mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded-full shadow-lg" style={{ backgroundColor: p.color }}></div>
-                  <span className="font-bold text-lg">{p.name} {p.id === playerId ? '(You)' : ''}</span>
-                </div>
-                <span className="text-green-400 font-mono font-bold">${p.money}</span>
-              </div>
-              <div className="text-xs text-gray-500">
-                Position: {p.position}
-              </div>
-            </div>
-          ))}
-
-          {gameState.players.some(p => p.status === 'bankrupt') && (
-            <div className="mt-6 border-t border-white/10 pt-4">
-              <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Spectators</h3>
-              <div className="space-y-2">
-                {gameState.players.filter(p => p.status === 'bankrupt').map((p) => (
-                  <div key={p.id} className="p-3 rounded-lg border border-gray-800 bg-[#1a1a2e] opacity-60 grayscale flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full shadow-lg" style={{ backgroundColor: p.color }}></div>
-                      <span className="font-bold text-sm text-gray-400">{p.name} {p.id === playerId ? '(You)' : ''}</span>
-                    </div>
-                    <span className="text-xs text-gray-500 font-bold uppercase">Watching</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Action Panel */}
-        {gameState.state === 'playing' && (
-          <div className="mt-4 p-4 bg-[#212130] rounded-xl border border-white/10 flex flex-col gap-4">
-            <div>
-              <h3 className="font-bold text-gray-300 mb-2 text-center">
-                {isMyTurn ? "It's your turn!" : `Waiting for ${currentPlayer?.name}...`}
-              </h3>
-
-              {gameState.state === 'playing' && (
-                <TurnTimer gameState={gameState} playerId={playerId} variant="panel" />
-              )}
-            </div>
-
-            {/* Roll Dice button moved to center of board */}
-
-            <button onClick={handleOpenProposeTrade} className="bg-blue-600 hover:bg-blue-500 w-full py-3 rounded-lg font-bold transition-colors shadow-lg">
-              Propose Trade
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Modals */}
-      {isTradeModalOpen && (
-        <TradeModal gameState={gameState} playerId={playerId} onClose={() => setIsTradeModalOpen(false)} 
-          existingTrade={editingTrade} 
-        />
-      )}
-
-      {viewingTrade && (
-        <ViewTradeModal gameState={gameState} playerId={playerId} trade={viewingTrade}
-          onClose={() => setViewingTrade(undefined)}
-          onAccept={() => handleAcceptTrade(viewingTrade.id)}
-          onReject={() => handleRejectTrade(viewingTrade.id)}
-          onCounter={() => handleOpenCounterTrade(viewingTrade)}
-        />
-      )}
-    </div>
-  );
-};
-
+  const [reduced,setReduced] = useState(()=>{try{return localStorage.getItem('monopoly_reduce_motion')==='true';}catch{return false;}});
+  const [soundCues] = useState(() => new SoundCues());
+  const [sound, setSound] = useState(false);
+  useEffect(() => { soundCues.observe(game, presentation); }, [soundCues, game, presentation]);
+  useEffect(() => () => soundCues.dispose(), [soundCues]);
+  const systemReduced = useSyncExternalStore(subscribeMotion,motionSnapshot);
+  const reducedMotion = reduced || systemReduced;
+  useEffect(()=>{ session.presentation.setReduced(reducedMotion); },[session,reducedMotion]);
+  const changeMotion = (value:boolean) => {setReduced(value);try{localStorage.setItem('monopoly_reduce_motion',String(value));}catch{/* Preference remains valid for this tab. */}};
+  const playerId = credentials?.playerId || '';
+  const displayGame = game ? { ...game, players: game.players.map(player => ({ ...player, money: presentation.balances[player.id] ?? player.money })), properties: presentation.properties, vacationJackpot: presentation.vacationJackpot } : null;
+  const me = game?.players.find(player=>player.id===playerId);
+  const ready = connection==='ready';
+  const blocked = !ready || !!pending;
+  const myTurn = game?.players[game.turnIndex]?.id===playerId;
+  const active = me?.status==='active';
+  const canTrade = game?.state==='playing' && active && !presentation.busy && ['awaiting_roll','awaiting_end','buy','flight','debt'].includes(game.phase.kind);
+  const offers = game ? Object.values(game.trades).filter(trade=>[trade.initiatorId,trade.targetId].includes(playerId) && trade.status==='pending') : [];
+  const incoming = offers.filter(trade=>trade.targetId===playerId);
+  const bankruptcyKey = `${game?.gameId}:${playerId}`;
+  const inspect = (index:number) => {setBrowse(false);setSelected(index);};
+  const openTrade = () => setTradeEditor('new');
+  return <div className={`app-shell ${reducedMotion?'reduce-motion':''}`}>
+    <header className="app-header"><a className="brand" href="/" onClick={event=>{if(game){event.preventDefault();setShowRules(true);}}}><span className="brand-mark"><Globe2 size={23}/></span><span>MONOPOLY<small>ONLINE · WORLD EDITION</small></span></a>
+      <div className="header-actions">{game && <span className="room-tag"><span>ROOM</span>{game.roomCode}</span>}<button className="icon-button" aria-label="Game rules" onClick={()=>setShowRules(true)}><HelpCircle size={20}/></button><button className="icon-button" aria-label="Accessibility settings" onClick={()=>setShowSettings(true)}><Settings2 size={20}/></button>{game && <button className="icon-button" aria-label="Leave table" onClick={()=>setConfirmLeave(true)}><LogOut size={19}/></button>}</div>
+    </header>
+    {connection!=='ready' && <div className={`connection-banner ${connection==='replaced'?'warning':''}`} role="status"><WifiOff size={17}/><span>{connection==='connecting'?'Connecting to your table…':connection==='resuming'?'Restoring your saved seat…':connection==='replaced'?'This seat is open in another tab. Continue there, or return to the lobby.':'Connection interrupted. Your seat is saved; reconnecting…'}</span>{connection==='replaced'?<button onClick={session.forgetSeat}>Return to lobby</button>:<button onClick={session.retry}>Retry connection</button>}</div>}
+    {error && <div className="error-banner" role="alert"><span>{error}</span>{retryable && <button onClick={session.retry}>Retry safely</button>}{!retryable && <button className="icon-button" aria-label="Dismiss message" onClick={session.dismissError}><X size={17}/></button>}</div>}
+    {!game || game.state==='lobby' ? <Lobby key={game?.gameId || 'entrance'} game={game} playerId={playerId} ready={ready} pending={pending} enter={session.enter} command={session.command}/> : <main className="game-layout">
+      <div className="game-topline"><div><span className="eyebrow">{game.state==='ended'?'THE FINAL DEAL':myTurn?'MAKE YOUR MOVE':'AT THE TABLE'}</span><h1>{game.state==='ended'?`${game.players.find(player=>player.id===game.winnerId)?.name || 'The table'} wins!`:myTurn?`Your turn, ${me?.name}`:`${game.players[game.turnIndex]?.name}’s turn`}</h1></div><div className="wallet-stat"><Wallet size={18}/><span>YOUR CASH<strong>{formatMoney(presentation.balances[playerId] ?? me?.money ?? 0)}</strong></span></div></div>
+      <Board game={displayGame || game} presentation={presentation} selected={selected} onSquare={inspect} onBrowse={()=>setBrowse(true)} reducedMotion={reducedMotion}>
+        <span className="center-phase">{presentation.busy ? presentation.rolling?'A little luck…':'Here we go…':phaseDescription(game.phase)}</span>
+        {myTurn && game.phase.kind==='awaiting_roll' && !presentation.busy && <button className="button primary center-roll" disabled={blocked || !active} onClick={()=>session.command({type:'roll_dice'})}><Dices size={19}/>Roll dice</button>}
+      </Board>
+      <aside className="game-sidebar">
+        <nav className="sidebar-tabs" aria-label="Table panels">{([{id:'turn',icon:Dices,label:'Turn'},{id:'players',icon:Users,label:'Players'},{id:'trades',icon:ArrowLeftRight,label:'Trades'},{id:'activity',icon:Flag,label:'Activity'}] as const).map(item=><button key={item.id} className={tab===item.id?'active':''} aria-pressed={tab===item.id} onClick={()=>setTab(item.id)}><item.icon size={17}/>{item.label}{item.id==='trades' && incoming.length>0 && <span className="count-badge">{incoming.length}</span>}</button>)}</nav>
+        {tab==='turn' && <>
+          <ActionPanel game={game} playerId={playerId} blocked={blocked} animating={presentation.busy} pending={pending} command={session.command} onInspect={inspect} onTrade={openTrade} onBankrupt={()=>setConfirmBankrupt(true)} offset={serverOffset}/>
+          <section className="portfolio-panel"><div className="panel-heading"><h3>Your portfolio</h3><House size={16}/></div><div className="portfolio-stats"><div><strong>{Object.values((displayGame || game).properties).filter(property=>property.ownerId===playerId).length}</strong><span>DEEDS</span></div><div><strong>{me?.getOutOfJailCards || 0}</strong><span>JAIL CARDS</span></div><div><strong>{me?.flightChances || 0}</strong><span>FLIGHTS</span></div></div><div className="portfolio-deeds">{Object.values((displayGame || game).properties).filter(property=>property.ownerId===playerId).map(property=><button key={property.id} onClick={()=>inspect(property.id)} style={{borderColor:SQUARES[property.id].color||'#c3a574'}}>{SQUARES[property.id].name}</button>)}</div><button className="button secondary full" disabled={blocked || !canTrade} onClick={openTrade}><ArrowLeftRight size={16}/>Propose a trade</button>{!canTrade && active && <p className="footnote">Trading opens between moves and effects.</p>}</section>
+          {incoming.length>0 && <button className="incoming-offer" onClick={()=>setTradeId(incoming[0].id)}><ArrowLeftRight size={19}/><span>You have {incoming.length===1?'a trade offer':`${incoming.length} trade offers`}<small>Review the terms</small></span><ArrowRight size={16}/></button>}
+        </>}
+        {tab==='players' && <section className="table-panel"><div className="panel-heading"><h2>At the table</h2><span className="badge">{game.players.filter(player=>player.status==='active').length} PLAYING</span></div><div className="player-list">{(displayGame || game).players.map((player,index)=><article key={player.id} className={`player-card ${game.turnIndex===index?'is-current':''} ${player.status!=='active'?'is-out':''}`}><div className="player-card-heading"><span className="player-token" style={{color:player.color}}>{tokenSymbol(player.color)}</span><div><strong>{player.name}{player.id===playerId?' (you)':''}</strong><small>{player.status!=='active'?'Spectating':player.connected===false?'Reconnecting':player.inJail?'In jail':SQUARES[player.position].fullName}</small></div>{player.id===game.winnerId?<Trophy size={19}/>:player.id===game.hostId?<Crown size={16}/>:null}<strong className="player-cash">{formatMoney(player.money)}</strong></div><div className="player-properties">{Object.values((displayGame || game).properties).filter(property=>property.ownerId===player.id).map(property=><button key={property.id} onClick={()=>inspect(property.id)} style={{borderColor:SQUARES[property.id].color||'#c3a574'}} aria-label={`Inspect ${SQUARES[property.id].fullName}`}>{SQUARES[property.id].name}</button>)}</div></article>)}</div></section>}
+        {tab==='trades' && <section className="table-panel"><div className="panel-heading"><h2>The deal room</h2><ArrowLeftRight size={20}/></div><p className="muted">Your offers, all in one place.</p><button className="button primary full" disabled={blocked || !canTrade} onClick={openTrade}>Propose a trade</button>{offers.length?offers.map(trade=><button key={trade.id} className="trade-list-item" onClick={()=>setTradeId(trade.id)}><span>{trade.targetId===playerId?'From':'To'} {game.players.find(player=>player.id===(trade.targetId===playerId?trade.initiatorId:trade.targetId))?.name}<small>{trade.targetId===playerId?'Waiting for you':'Waiting for their reply'}</small></span><ArrowRight size={18}/></button>):<div className="empty-panel"><ArrowLeftRight/><p>No open offers</p><small>A good deal can change the game.</small></div>}</section>}
+        {tab==='activity' && <section className="table-panel"><div className="panel-heading"><h2>Table journal</h2><Flag size={18}/></div><ol className="activity-log">{[...game.logs].reverse().map((entry,index)=><li key={`${game.logs.length-index}:${entry}`}><span className="log-dot"/>{entry}</li>)}</ol></section>}
+        <div className="sync-footnote"><Check size={12}/> {ready?'Live & synced':'Reconnecting'} · Turn {game.turnId} · v{game.version}</div>
+      </aside>
+    </main>}
+    {selected!==null && game && <PropertyInfoCard index={selected} game={displayGame || game} playerId={playerId} blocked={blocked} onClose={()=>setSelected(null)} command={session.command}/>}
+    {browse && game && <Dialog title="Explore the board" onClose={()=>setBrowse(false)} wide><p className="muted">Every city, airport, mine, and little surprise.</p><div className="browse-grid">{SQUARES.map(square=><button key={square.id} onClick={()=>inspect(square.id)}><span className="property-dot" style={{background:square.color||'#c3a574'}}/><span>{square.fullName}<small>{square.type==='tax'?square.name==='Money Tax'?'10% of cash':'5% of property value':square.price?formatMoney(square.price):square.type}</small></span><ArrowRight size={14}/></button>)}</div></Dialog>}
+    {tradeEditor && game && active && <TradeModal key={typeof tradeEditor==='string'?'new':tradeEditor.id} game={game} playerId={playerId} original={typeof tradeEditor==='string'?undefined:tradeEditor} blocked={blocked} onClose={()=>setTradeEditor(null)} command={session.command}/>}
+    {tradeId && game?.trades[tradeId] && <ViewTradeModal trade={game.trades[tradeId]} game={game} playerId={playerId} blocked={blocked} command={session.command} onClose={()=>setTradeId(null)} onCounter={()=>{setTradeEditor(game.trades[tradeId]);setTradeId(null);}}/>}
+    {showSettings && <Dialog title="Make it comfortable" onClose={()=>setShowSettings(false)}><label className="setting-row"><span><strong>Reduce motion</strong><small>Skip dice tumble and token travel. All outcomes stay the same.</small></span><input type="checkbox" checked={reducedMotion} disabled={systemReduced} onChange={event=>changeMotion(event.target.checked)}/></label>{systemReduced && <p className="form-note">Your device’s reduced-motion preference is on.</p>}<label className="setting-row"><span><strong>Tabletop sounds</strong><small>Soft dice, movement, and payment cues. Muted by default.</small></span><input type="checkbox" checked={sound} onChange={event=>setSound(soundCues.setEnabled(event.target.checked))}/></label><p className="muted">Use Tab to reach controls, Enter to choose a space, and Escape to close a dialog. Zoom controls and “Browse spaces” make every deed easy to reach.</p></Dialog>}
+    {showRules && <Dialog title="A world of possibilities" onClose={()=>setShowRules(false)}><p>This is a custom 56-space city-trading game for 2–8 players.</p><ul className="rules-list"><li><strong>Build your empire.</strong> Buy unowned cities, airports, and mines. Cities can have up to four houses, then a hotel, built when you land there. Buy up to two houses with a new deed. Houses don’t require a full color set; hotels do.</li><li><strong>Keep moving.</strong> Collect {formatMoney(RULES.passingStart)} passing Start or {formatMoney(RULES.landingStart)} landing exactly, plus your mine bonus. Doubles earn another roll after all effects. Three doubles send you to jail.</li><li><strong>Take a flight.</strong> At an airport, fly up to the next airport. Your flight chance refreshes on passing or landing on Start. Flights from your own airport are free; other tickets cost $400, or $700 from Airport 4.</li><li><strong>Expect surprises.</strong> Chance, Chest, and Risk can change your plans. Vacation pays out the pot, but you skip your next turn.</li><li><strong>Stay in the game.</strong> Settle debts by selling deeds and buildings for 75% of cost or trading. The last active player wins.</li><li><strong>Keep the table moving.</strong> Decisions have server timers. Missed purchases and flights are passed; cards resolve automatically. Debt timeout sells assets before bankruptcy.</li></ul><p className="footnote">The shared rules catalog supplies every displayed price and rent. See each deed for the exact amounts.</p></Dialog>}
+    {confirmLeave && <Dialog title={active && game?.state==='playing'?'Leave and forfeit?':'Leave this table?'} onClose={()=>setConfirmLeave(false)}><p>{active && game?.state==='playing'?'Your properties return to the bank and you cannot rejoin this match. Closing the browser instead keeps your saved seat for reconnection.':'You’ll return to the lobby. You can create a new table there.'}</p><div className="dialog-actions"><button className="button secondary" onClick={()=>setConfirmLeave(false)}>Stay here</button><button className="button danger" disabled={blocked} onClick={()=>{session.command({type:'leave_game'});setConfirmLeave(false);setSelected(null);setTradeEditor(null);setTradeId(null);}}>Leave table</button></div></Dialog>}
+    {confirmBankrupt && <Dialog title="Declare bankruptcy?" onClose={()=>setConfirmBankrupt(false)}><p>Your properties return to the bank and you’ll watch the rest of the game as a spectator. Try selling or trading first if you want to stay in.</p><div className="dialog-actions"><button className="button secondary" onClick={()=>setConfirmBankrupt(false)}>Keep playing</button><button className="button danger" disabled={blocked} onClick={()=>{session.command({type:'declare_bankruptcy'});setConfirmBankrupt(false);}}>Declare bankruptcy</button></div></Dialog>}
+    {game && me?.status==='bankrupt' && dismissedBankruptcy!==bankruptcyKey && !confirmBankrupt && <Dialog title="You’re still part of the table" onClose={()=>setDismissedBankruptcy(bankruptcyKey)}><p>You went bankrupt, but the game continues. Stay to watch the deals, dice, and final winner.</p><button className="button primary full" onClick={()=>setDismissedBankruptcy(bankruptcyKey)}>Continue as spectator</button></Dialog>}
+    <footer className="app-footer">A classic game night. A whole new world.</footer>
+  </div>;
+}
 export default App;
