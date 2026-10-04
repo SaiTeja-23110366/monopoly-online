@@ -118,6 +118,7 @@ input:disabled, select:disabled { opacity: .65; cursor: not-allowed; }
    there is room. Page scrolling keeps the complete board accessible on laptops. */
 .game-layout { width: min(100% - 48px, 1440px); margin: 28px auto 0; display: grid; grid-template-columns: minmax(0,1fr) 330px; gap: 23px 26px; align-items: start; }
 .game-topline { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.game-topline:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .game-topline h1 { margin: 6px 0 0; font-family: Georgia, 'Times New Roman', serif; font-size: 32px; font-weight: 400; letter-spacing: -.7px; overflow-wrap: anywhere; }
 .wallet-stat { display: flex; align-items: center; gap: 13px; padding: 9px 15px 9px 0; color: #a4b598; }
 .wallet-stat > span { font-size: 8px; letter-spacing: 1.4px; }
@@ -502,3 +503,48 @@ input:disabled, select:disabled { opacity: .65; cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) { .square.square-changed { animation: none !important; box-shadow: inset 0 0 0 2px #c3a56a; } }
 .reduce-motion .square.square-changed { animation: none !important; box-shadow: inset 0 0 0 2px #c3a56a; }
 .icon-button[aria-pressed="true"] { color: #e4e4c3; background: #3f5437; border-color: #8da079; }
+
+/* Desktop game desk: spend the screen height on the board. Header, turn/cash,
+   camera controls and footer live beside it, not above/below it. The weighted
+   board canvas is unchanged; only the side panels have an internal scroll area.
+   Narrow or very short screens retain the normal, accessible document flow. */
+@media (min-width: 1100px) and (min-height: 600px) {
+  .app-shell.game-mode {
+    --desk-board-size: min(1080px,calc(100dvh - 32px),calc(100vw - 404px));
+    height: 100dvh;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: var(--desk-board-size) 330px;
+    grid-template-rows: auto auto auto 44px minmax(120px,1fr) 44px 14px;
+    gap: 10px 26px;
+    padding: 16px 24px;
+    justify-content: center;
+  }
+  .game-mode .game-layout, .game-mode .board-section { display: contents; }
+  .game-mode .board-viewport { grid-column: 1; grid-row: 1 / -1; width: var(--desk-board-size); align-self: center; }
+  .game-mode .app-header { grid-column: 2; grid-row: 1; width: 100%; height: auto; min-width: 0; max-width: none; max-height: 98px; overflow-y: auto; margin: 0; padding: 0 0 8px; flex-wrap: wrap; gap: 8px; }
+  .game-mode .brand { font-size: 18px; gap: 10px; }
+  .game-mode .brand-mark { width: 36px; height: 36px; }
+  .game-mode .brand small { font-size: 7px; letter-spacing: 1.5px; margin-top: 5px; }
+  .game-mode .header-actions { width: 100%; gap: 3px; }
+  .game-mode .room-tag { margin-right: auto; padding: 8px 10px; font-size: 11px; gap: 7px; }
+  .game-mode .session-notices { grid-column: 2; grid-row: 2; min-width: 0; max-height: 96px; overflow-y: auto; }
+  .game-mode .session-notices:empty { display: none; }
+  .game-mode .connection-banner, .game-mode .error-banner { margin: 0 0 6px; padding: 8px 10px; gap: 8px; font-size: 11px; }
+  .game-mode .connection-banner > span, .game-mode .error-banner > span { min-width: 0; overflow-wrap: anywhere; }
+  .game-mode .game-topline { grid-column: 2; grid-row: 3; display: grid; grid-template-columns: minmax(0,1fr) auto; max-height: 80px; overflow-y: auto; gap: 12px; align-items: center; }
+  .game-mode .game-topline h1 { font-size: 24px; margin-top: 4px; }
+  .game-mode .game-topline .eyebrow { font-size: 8px; letter-spacing: 1.2px; }
+  .game-mode .wallet-stat { padding: 0; gap: 7px; }
+  .game-mode .wallet-stat > svg { display: none; }
+  .game-mode .wallet-stat strong { font-size: 22px; }
+  .game-mode .board-toolbar { grid-column: 2; grid-row: 4; height: auto; min-height: 44px; margin: 0; padding: 0; gap: 8px; }
+  .game-mode .board-toolbar > span { max-width: 122px; font-size: 7px; line-height: 1.5; letter-spacing: .8px; }
+  .game-mode .zoom-controls { flex-shrink: 0; }
+  .game-mode .game-sidebar { grid-column: 2; grid-row: 5; position: static; top: auto; height: 100%; min-height: 0; max-height: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; gap: 12px; }
+  .game-mode .game-sidebar > * { flex-shrink: 0; }
+  .game-mode .action-panel, .game-mode .portfolio-panel, .game-mode .table-panel { padding: 18px; }
+  .game-mode .board-footer { grid-column: 2; grid-row: 6; min-height: 44px; padding: 0; gap: 8px; }
+  .game-mode .board-footer > span { max-width: 170px; font-size: 8px; }
+  .game-mode .app-footer { grid-column: 2; grid-row: 7; margin: 0; padding: 0; font-size: 10px; line-height: 1.4; }
+}
