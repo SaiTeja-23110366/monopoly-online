@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
-let vite, ActionPanel, PropertyInfoCard, TradeModal, ViewTradeModal, Lobby, board, flightDestinations;
+let vite, GameRules, ActionPanel, PropertyInfoCard, TradeModal, ViewTradeModal, Lobby, board, flightDestinations;
 before(async()=>{
   // Middleware mode transforms actual TSX for SSR without opening a listening server or browser.
   vite=await createServer({server:{middlewareMode:true,hmr:false,watch:null},appType:'custom'});
@@ -11,6 +11,7 @@ before(async()=>{
   ({PropertyInfoCard}=await vite.ssrLoadModule('/src/components/PropertyInfoCard.tsx'));
   ({TradeModal,ViewTradeModal}=await vite.ssrLoadModule('/src/components/TradeModal.tsx'));
   ({Lobby}=await vite.ssrLoadModule('/src/components/Lobby.tsx'));
+  ({GameRules}=await vite.ssrLoadModule('/src/App.tsx'));
   ({SQUARES:board,flightDestinations}=await vite.ssrLoadModule('../shared/board.ts'));
   globalThis.location=new URL('https://game.example/?room=ABC123');globalThis.localStorage={getItem(){return null;}};
 });
@@ -208,4 +209,123 @@ test('all 56 canonical board spaces have public names and economics, taxes have 
   assert.equal(board.length,56);assert.equal(new Set(board.map(square=>square.id)).size,56);
   assert.ok(board.every(square=>square.fullName));assert.equal(board[3].price,undefined);assert.equal(board[40].price,undefined);
   assert.equal(board[10].price,150);assert.equal(board[55].price,650);
+});
+
+function deedHtml(snapshot,index=1){return renderToStaticMarkup(createElement(PropertyInfoCard,{index,game:snapshot,playerId:'p1',blocked:false,onClose:noop,command:noop}));}
+function balancedGame(){return {...game({kind:'awaiting_roll',playerId:'p1'}),rulesVersion:3,properties:Object.fromEntries(board.filter(square=>square.price).map(square=>[square.id,{id:square.id,ownerId:null,houses:0,mortgaged:false}]))};}
+function currentRent(html){return html.match(/<span>Current rent<\/span><strong>([^<]+)<\/strong>/)?.[1];}
+const money=value=>`$${value.toLocaleString('en-US')}`;
+test('every city deed updates the live undeveloped rent quote as its color set completes, breaks, and restores',()=>{
+  for(const city of board.filter(square=>square.type==='property')){
+    const snapshot=balancedGame(),group=board.filter(square=>square.colorGroup===city.colorGroup);
+    snapshot.properties[city.id].ownerId='p1';
+    let html=deedHtml(snapshot,city.id);assert.equal(currentRent(html),money(city.rent[0]),city.fullName);
+    assert.doesNotMatch(html,/base rent is active/);
+    for(const square of group)snapshot.properties[square.id].ownerId='p1';
+    html=deedHtml(snapshot,city.id);assert.equal(currentRent(html),money(city.rent[0]*2));
+    assert.match(html,/role="status" aria-live="polite" aria-atomic="true"/);assert.match(html,/Complete color set · 2× base rent is active/);
+    const other=group.find(square=>square.id!==city.id);
+    snapshot.properties[other.id].ownerId='p2';
+    html=deedHtml(snapshot,city.id);assert.equal(currentRent(html),money(city.rent[0]));assert.doesNotMatch(html,/base rent is active/);
+    snapshot.properties[other.id].ownerId='p1';
+    assert.equal(currentRent(deedHtml(snapshot,city.id)),money(city.rent[0]*2));
+  }
+});
+test('city rent schedules and house levels stay unchanged and explain complete-set conditions',()=>{
+  const snapshot=balancedGame();
+  for(const index of [1,2,4])snapshot.properties[index].ownerId='p1';
+  for(let level=1;level<=4;level++){
+    snapshot.properties[1].houses=level;
+    let html=deedHtml(snapshot);assert.equal(currentRent(html),money(board[1].rent[level]));assert.doesNotMatch(html,/base rent is active/);
+    snapshot.properties[2].ownerId='p2';
+    html=deedHtml(snapshot);assert.equal(currentRent(html),money(board[1].rent[level]));
+    snapshot.properties[2].ownerId='p1';
+  }
+  const html=deedHtml(snapshot);
+  for(const rent of board[1].rent)assert.ok(html.includes(`<strong>${money(rent)}</strong>`));
+  assert.match(html,/Base rent · without complete set/);assert.match(html,/Hotel · complete set required/);
+  assert.match(html,/<span>Undeveloped · complete color set<\/span><strong>\$12<\/strong>/);
+  assert.match(html,/Build only when you land here, up to two houses at purchase/);assert.match(html,/Houses do not require a complete color set/);
+});
+test('a broken-set hotel stays built and visibly quotes four-house rent until the complete set returns',()=>{
+  const snapshot=balancedGame();
+  for(const index of [1,2,4])snapshot.properties[index].ownerId='p1';
+  snapshot.properties[1].houses=5;
+  let html=deedHtml(snapshot);assert.equal(currentRent(html),money(board[1].rent[5]));assert.match(html,/Hotel active · complete color set owned/);
+  for(const lostOwner of ['p2',null]){
+    snapshot.properties[2].ownerId=lostOwner;
+    html=deedHtml(snapshot);assert.equal(currentRent(html),money(board[1].rent[4]));
+    assert.match(html,/Hotel inactive · the hotel stays built, but charges the four-house rent/);assert.match(html,/Hotel built/);assert.equal(snapshot.properties[1].houses,5);
+    snapshot.properties[2].ownerId='p1';
+    html=deedHtml(snapshot);assert.equal(currentRent(html),money(board[1].rent[5]));assert.match(html,/Hotel active/);assert.doesNotMatch(html,/Hotel inactive/);
+  }
+  snapshot.properties[1].ownerId='p2';
+  html=deedHtml(snapshot);assert.equal(currentRent(html),money(board[1].rent[4]));assert.match(html,/Hotel inactive/);assert.match(html,/>Bob<\/strong>/);
+});
+test('unowned and mortgaged deeds cannot imply collectible rent or an active hotel',()=>{
+  const snapshot=balancedGame();assert.equal(currentRent(deedHtml(snapshot)),'None · bank-owned');
+  for(const index of [1,2,4])snapshot.properties[index].ownerId='p1';
+  snapshot.properties[1].mortgaged=true;
+  let html=deedHtml(snapshot);assert.equal(currentRent(html),'$0');assert.match(html,/No rent while mortgaged/);assert.doesNotMatch(html,/base rent is active/);
+  snapshot.properties[1].houses=5;
+  html=deedHtml(snapshot);assert.equal(currentRent(html),'$0');assert.match(html,/Hotel inactive · no rent while mortgaged/);assert.doesNotMatch(html,/Hotel active ·|Hotel inactive · the hotel stays built/);
+});
+test('mine and airport current rents follow current ownership without complete-set city bonuses',()=>{
+  for(const group of [[6,21,34,45],[10,27,37,50]]){
+    const snapshot=balancedGame();
+    for(let count=1;count<=4;count++){
+      snapshot.properties[group[count-1]].ownerId='p1';
+      const html=deedHtml(snapshot,group[0]);assert.equal(currentRent(html),money(board[group[0]].rent[count-1]));
+      assert.doesNotMatch(html,/base rent is active|Undeveloped · complete color set/);
+    }
+    snapshot.properties[group[1]].ownerId='p2';assert.equal(currentRent(deedHtml(snapshot,group[0])),money(board[group[0]].rent[2]));
+  }
+});
+test('legacy snapshots with missing or explicit v2 rules preserve base and broken-set hotel rent',()=>{
+  for(const version of [undefined,2]){
+    const snapshot=balancedGame();
+    if(version===undefined)delete snapshot.rulesVersion;else snapshot.rulesVersion=version;
+    for(const index of [1,2,4])snapshot.properties[index].ownerId='p1';
+    let html=deedHtml(snapshot);assert.equal(currentRent(html),money(board[1].rent[0]));assert.doesNotMatch(html,/Undeveloped · complete color set|base rent is active/);
+    assert.match(html,/legacy table has no complete-set base-rent bonus/);
+    snapshot.properties[1].houses=5;snapshot.properties[2].ownerId='p2';
+    html=deedHtml(snapshot);assert.equal(currentRent(html),money(board[1].rent[5]));assert.match(html,/Hotel active · legacy economy keeps hotel rent/);assert.doesNotMatch(html,/Hotel inactive/);
+  }
+});
+test('Start and mine deeds display versioned income and total mine bonuses',()=>{
+  for(const [version,passing,landing,bonus] of [[3,'$200','$300','$25 / $60 / $100 / $150'],[2,'$750','$1,000','$200 / $500 / $1,000 / $2,000'],[undefined,'$750','$1,000','$200 / $500 / $1,000 / $2,000']]){
+    const snapshot=balancedGame();snapshot.rulesVersion=version;
+    const start=deedHtml(snapshot,0),mine=deedHtml(snapshot,10);
+    assert.ok(start.includes(`Collect ${passing} when passing Start, or ${landing} when landing exactly`));
+    assert.ok(mine.includes(`Mine ownership adds a total Start bonus: ${bonus} for 1–4 mines`));
+  }
+});
+test('lobby identifies balanced new tables and preserves the legacy saved-table economy',()=>{
+  const props={game:null,playerId:'p1',ready:true,pending:null,enter:noop,command:noop};
+  let html=renderToStaticMarkup(createElement(Lobby,props));
+  assert.match(html,/New tables use the balanced economy: \$200 passing Start, \$300 landing exactly/);
+  assert.match(html,/Mine bonuses: \$25 \/ \$60 \/ \$100 \/ \$150 total/);
+  for(const version of [3,2,undefined]){
+    const snapshot=balancedGame();snapshot.state='lobby';snapshot.phase={kind:'lobby'};snapshot.rulesVersion=version;
+    html=renderToStaticMarkup(createElement(Lobby,{...props,game:snapshot}));
+    if(version===3){assert.match(html,/Balanced economy/);assert.match(html,/Start: \$200 passing \/ \$300 landing/);}
+    else {assert.match(html,/Legacy economy · This saved table keeps its original rules/);assert.match(html,/Start: \$750 passing \/ \$1,000 landing/);}
+  }
+});
+test('rules dialog shows the current economy, with new-room defaults and explicit legacy differences',()=>{
+  for(const version of [3,2,undefined,null]){
+    const snapshot=version===null?null:{...balancedGame(),rulesVersion:version};
+    const html=renderToStaticMarkup(createElement(GameRules,{game:snapshot}));
+    assert.match(html,/built only when you land there/);assert.match(html,/Houses don’t require a full color set/);assert.match(html,/before the next airport/);
+    if(version===3 || version===null){
+      assert.match(html,/Balanced economy/);assert.match(html,/Collect \$200 passing Start or \$300 landing exactly/);
+      assert.match(html,/Total bonuses for owning 1–4 mines: \$25 \/ \$60 \/ \$100 \/ \$150/);
+      assert.match(html,/undeveloped city earns double base rent/);assert.match(html,/hotel stays built and charges the four-house rent until the set is restored/);
+    }else{
+      assert.match(html,/Legacy economy/);assert.match(html,/Collect \$750 passing Start or \$1,000 landing exactly/);
+      assert.match(html,/Total bonuses for owning 1–4 mines: \$200 \/ \$500 \/ \$1,000 \/ \$2,000/);
+      assert.match(html,/no complete-set base-rent bonus/);assert.match(html,/hotel keeps charging hotel rent even if the set is later broken/);
+      assert.doesNotMatch(html,/undeveloped city earns double base rent/);
+    }
+  }
 });
