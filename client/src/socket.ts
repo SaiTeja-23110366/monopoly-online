@@ -1,11 +1,10 @@
-import { io, Socket } from 'socket.io-client';
-import type { ClientToServerEvents, ServerToClientEvents } from '../../shared/types';
+import { io, type Socket } from 'socket.io-client';
+import type { ClientEvents, ServerEvents } from '../../shared/protocol';
 
-// Connect to the backend server (automatically uses current host in production)
-const URL = import.meta.env.PROD ? undefined : 'http://localhost:3001';
-export const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(URL as any);
-
-// Debugging
-socket.on('connect', () => {
-  console.log('Connected to socket server:', socket.id);
+// Vite proxies /socket.io in development, and production uses the same origin.
+export const socket: Socket<ServerEvents, ClientEvents> = io(import.meta.env.VITE_SERVER_URL || undefined, {
+  autoConnect: false,
+  reconnection: true,
+  reconnectionDelay: 700,
+  reconnectionDelayMax: 5000,
 });
