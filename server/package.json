@@ -2,11 +2,13 @@
   "name": "server",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/server/src/index.js",
   "scripts": {
-    "start": "ts-node src/index.ts",
-    "dev": "nodemon src/index.ts",
-    "build": "tsc"
+    "start": "node dist/server/src/index.js",
+    "dev": "ts-node --prefer-ts-exts src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/server/test/*.test.js"
   },
   "keywords": [],
   "author": "",
@@ -23,5 +25,11 @@
     "socket.io": "^4.8.3",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": "^22.18.0 || >=24.0.0"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.3"
   }
 }
