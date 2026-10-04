@@ -3,7 +3,7 @@ import type {
   GameState, Player, PropertyState, TradeOffer, TradeAssets, ActiveCard, CardDeck,
   GameCommand, CommandResult, GamePhase, GameEvent, MovementReason, LandingContinuation, DebtRecord,
 } from '../../shared/types';
-import { BOARD_DATA, RULES, PLAYER_COLORS, flightDestinations, flightTicket, liquidationValue, propertyValue } from '../../shared/board';
+import { BOARD_DATA, RULES, PLAYER_COLORS, flightDestinations, flightTicket, liquidationValue, propertyValue, propertyRent, rulesForGame } from '../../shared/board';
 
 export const SYSTEM_ACTOR = '__system__';
 export const PHASE_DURATION = Object.freeze({ roll: 30_000, rolling: 900, moveStep: 140, rent: 1500,
@@ -18,7 +18,7 @@ export const CHEST_CARDS: readonly Omit<ActiveCard, 'deck'>[] = [
 export const CHANCE_CARDS: readonly Omit<ActiveCard, 'deck'>[] = [
   { text: 'Bank Robbery! You got away with $500.', action: 'add_money', amount: 500 },
   { text: 'Hacked! You lose $300.', action: 'deduct_money', amount: 300 },
-  { text: 'Advance to Start. Collect $1000 and your mine bonus.', action: 'go_to_start' },
+  { text: `Advance to Start. Collect $${RULES.landingStart} and your mine bonus.`, action: 'go_to_start' },
   { text: 'Go directly to Jail. Do not pass Start.', action: 'go_to_jail' },
   { text: 'Go back 3 spaces. No Start income.', action: 'go_back_3' },
 ];
@@ -76,7 +76,7 @@ export class MonopolyGame {
     this.roomCode = roomCode;
     this.options = options;
     this.state = {
-      schemaVersion: 2, gameId: options.gameId ?? randomUUID(), version: 0, roomCode, state: 'lobby', hostId: null, winnerId: null,
+      schemaVersion: 2, rulesVersion: 3, gameId: options.gameId ?? randomUUID(), version: 0, roomCode, state: 'lobby', hostId: null, winnerId: null,
       players: [], turnIndex: 0, turnId: 0, phaseId: 0, phase: { kind: 'lobby' }, extraRoll: false,
       properties: {}, trades: {}, logs: ['Game created!'], diceValues: [1, 1], doublesCount: 0,
       hasRolled: false, awaitingBuyDecision: null, awaitingDebtResolution: null, awaitingFlightDecision: null,
@@ -292,9 +292,10 @@ export class MonopolyGame {
     this.setPhase({ kind: 'moving', ...movement, continuation }, durationMs);
   }
   private startIncome(player: Player, landed: boolean): void {
+    const rules = rulesForGame(this.state);
     const mineCount = this.owned(player.id).filter(prop => BOARD_DATA[prop.id].type === 'utility').length;
-    const bonus = RULES.mineBonuses[mineCount];
-    const amount = (landed ? RULES.landingStart : RULES.passingStart) + bonus;
+    const bonus = rules.mineBonuses[mineCount];
+    const amount = (landed ? rules.landingStart : rules.passingStart) + bonus;
     player.money += amount;
     player.flightChances = RULES.flightChanceRefresh;
     this.log(`${player.name} ${landed ? 'landed on' : 'passed'} Start: +$${amount}${bonus ? ` including $${bonus} from mines` : ''}, and a refreshed flight chance.`);
@@ -321,7 +322,8 @@ export class MonopolyGame {
     if (square.type === 'chance' || square.type === 'chest') {
       const deck: CardDeck = square.type === 'chest' ? 'chest' : square.name === 'Risk' ? 'risk' : 'chance';
       const cards = deck === 'chest' ? CHEST_CARDS : deck === 'risk' ? RISK_CARDS : CHANCE_CARDS;
-      const card = this.options.drawCard?.(deck) ?? { ...cards[this.randomIndex(cards.length)], deck };
+      const drawn = this.options.drawCard?.(deck) ?? { ...cards[this.randomIndex(cards.length)], deck };
+      const card = drawn.action === 'go_to_start' ? { ...drawn, text: `Advance to Start. Collect $${rulesForGame(this.state).landingStart} and your mine bonus.` } : drawn;
       requireRule(card && card.deck === deck && CARD_ACTIONS.has(card.action) && typeof card.text === 'string' &&
         (card.amount === undefined || integer(card.amount, 0, 1_000_000)), 'INVALID_CARD', 'Invalid card source.');
       this.log(`${player.name} drew a ${deck} card.`);
@@ -337,8 +339,7 @@ export class MonopolyGame {
     const continuation: LandingContinuation = square.type === 'railroad' ? { kind: 'flight', airportId: square.id } : FINISH;
     if (property.ownerId !== player.id && !property.mortgaged) {
       const owner = this.getPlayer(property.ownerId)!;
-      const count = this.owned(owner.id).filter(p => BOARD_DATA[p.id].type === square.type && !p.mortgaged).length;
-      const rent = square.rent?.[square.type === 'property' ? property.houses : Math.max(0, count - 1)] ?? 0;
+      const rent = propertyRent(this.state.properties, square.id, this.state.rulesVersion);
       const debt = this.charge(player, rent, owner.id, false, `rent for ${square.fullName}`, continuation);
       this.setPhase({ kind: 'rent', playerId: player.id,
         payment: { type: 'rent', message: `${player.name} owes ${owner.name} rent`, amount: rent, payerId: player.id, payeeId: owner.id }, debt, continuation }, PHASE_DURATION.rent);
@@ -702,6 +703,7 @@ export function assertGameState(value: unknown): asserts value is GameState {
   const valid = (condition: unknown, message: string): void => requireRule(condition, 'INVALID_SNAPSHOT', message);
   const boundedText = (text: unknown, max = 1000): text is string => typeof text === 'string' && text.length <= max;
   valid(object(value) && value.schemaVersion === 2, 'This saved room uses an incompatible game version. Create a new room.');
+  valid(object(value) && (value.rulesVersion === undefined || value.rulesVersion === 2 || value.rulesVersion === 3), 'This saved room uses an unsupported economy version.');
   const state = value as unknown as GameState;
   valid(integer(state.version) && integer(state.turnId) && integer(state.phaseId) && boundedText(state.roomCode, 32) &&
     typeof state.gameId === 'string' && state.gameId.length >= 1 && state.gameId.length <= 128 &&
