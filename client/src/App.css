@@ -114,7 +114,9 @@ input:disabled, select:disabled { opacity: .65; cursor: not-allowed; }
 .cash-setting small { display: block; color: #aebaa4; font-size: 11px; margin-top: 9px; }
 
 /* Game frame and table panels */
-.game-layout { width: min(100% - 64px, 1200px); margin: 28px auto 0; display: grid; grid-template-columns: minmax(0,1fr) 330px; gap: 23px 26px; align-items: start; }
+/* Use more of the desktop for the board, with a readable minimum canvas when
+   there is room. Page scrolling keeps the complete board accessible on laptops. */
+.game-layout { width: min(100% - 48px, 1440px); margin: 28px auto 0; display: grid; grid-template-columns: minmax(0,1fr) 330px; gap: 23px 26px; align-items: start; }
 .game-topline { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
 .game-topline h1 { margin: 6px 0 0; font-family: Georgia, 'Times New Roman', serif; font-size: 32px; font-weight: 400; letter-spacing: -.7px; overflow-wrap: anywhere; }
 .wallet-stat { display: flex; align-items: center; gap: 13px; padding: 9px 15px 9px 0; color: #a4b598; }
@@ -224,11 +226,11 @@ input:disabled, select:disabled { opacity: .65; cursor: not-allowed; }
 .square-target { background: #e8deba; box-shadow: inset 0 0 0 2px #a5793a; }
 .color-band { position: absolute; left: 0; right: 0; top: 0; height: .95cqw; background: var(--square-color); box-shadow: inset 0 -1px #0003; }
 .square-flag.fi { display: block; width: 2.25cqw; height: 1.55cqw; flex-shrink: 0; background-size: cover; border-radius: 1px; box-shadow: 0 0 0 .4px #263a2344; }
-.square-name { display: block; max-width: 100%; font-size: clamp(4.5px,1.13cqw,11.3px); font-weight: 800; letter-spacing: -.025em; text-align: center; overflow-wrap: anywhere; }
-.square-price { font-size: clamp(4.4px,.92cqw,9.2px); font-weight: 550; color: #45543b; font-variant-numeric: tabular-nums; }
+.square-name { display: block; max-width: 100%; font-size: clamp(4.5px,1.13cqw,14px); font-weight: 800; letter-spacing: -.025em; text-align: center; overflow-wrap: anywhere; }
+.square-price { font-size: clamp(4.4px,.92cqw,11.5px); font-weight: 550; color: #45543b; font-variant-numeric: tabular-nums; }
 .square-special { background: #d6dbc0; padding: .8cqw .28cqw; gap: .4cqw; }
 .square-special > svg { width: 2.3cqw; height: 2.3cqw; stroke-width: 1.6; color: #536443; }
-.square-special .square-name { font-weight: 650; font-size: clamp(4.5px,.96cqw,9.6px); }
+.square-special .square-name { font-weight: 650; font-size: clamp(4.5px,.96cqw,12px); }
 .special-letter { display: block; font-family: Georgia, 'Times New Roman', serif; font-size: 2.8cqw; line-height: .95; font-weight: 600; color: #6a7551; }
 .square-corner { padding: .8cqw; gap: .7cqw; background: #d2d9b7; }
 .square-corner > svg { width: 3.5cqw; height: 3.5cqw; stroke-width: 1.45; }
@@ -359,9 +361,15 @@ input:disabled, select:disabled { opacity: .65; cursor: not-allowed; }
 @keyframes dialog-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { animation: none !important; transition-duration: 0ms !important; scroll-behavior: auto !important; }
 
-/* Keep the complete table within reach on modest-height desktop displays. */
+/* A larger board may exceed the viewport height; keep every desktop action reachable.
+   The sidebar scrolls when needed, rather than clipping long lists or debt controls. */
+@media (min-width: 851px) {
+  .game-sidebar { position: sticky; top: 16px; max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; }
+}
 @media (min-width: 1050px) {
-  .game-layout { max-width: min(1200px,calc(max(560px,100dvh - 252px) + 356px)); }
+  /* Previously a 560px floor and 252px height reserve made wide laptops sparse.
+     Enlarge the board without making a short, ultrawide screen a giant canvas. */
+  .game-layout { max-width: calc(clamp(760px,100dvh - 160px,1080px) + 356px); }
 }
 @media (min-width: 1500px) { .lobby-layout { margin-top: 90px; margin-bottom: 60px; } }
 @media (max-width: 1100px) {
