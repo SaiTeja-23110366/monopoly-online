@@ -129,10 +129,21 @@ Existing prototype rooms must finish before an operator deploys this version, or
 players must create new rooms. There is no silent migration of an old room into a
 different rule state. Deployment and merging are separate operator actions.
 
+The balanced economy follow-up uses economy version 3 for **new rooms** while
+keeping the version-2 snapshot format. Existing saved rooms with a missing or
+version-2 economy marker continue their original economics; the UI identifies
+them as legacy. Create a new room to get the lower Start/mine income, doubled
+undeveloped-set rent, and ownership-dependent hotel premium. Nothing silently
+rewrites old balances, buildings, offers, or charged debts. Deploy both client
+and server together; do not roll back to an older server against new-economy
+rooms. Finish disposable memory-store games before restarting the server.
+
 ## Testing and limitations
 
 See [verification notes](docs/VERIFICATION.md) for the exact automated and browser
 checks run for this change, their evidence, and any remaining limitations.
+The [balance report](docs/BALANCE.md) documents the approved economy's seeded
+simulations, strategy/player-count sensitivity, and reproduction commands.
 Passing tests establish the covered scenarios; they do not establish that every
 possible browser, network, device, or game sequence is bug-free.
 
