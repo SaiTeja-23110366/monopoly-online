@@ -67,6 +67,47 @@ suite; they are not extra CI test cases. Review found and drove fixes for Redis
 TTL eviction, ambiguous write recovery, interrupted admission, spectator exit,
 client retry, and admission-proof concurrency issues.
 
+## Persistent trade offers (2026-10-04)
+
+The trade follow-up removes turn-based cancellation and automatic cancellation
+when cash, cards, or property ownership change. Pending offers stay open until
+an explicit participant response, replacement counteroffer, participant
+elimination/departure, or game end. Assets are not reserved: acceptance still
+checks current holdings atomically and unavailable offers can be countered or
+dismissed. The dialog explains this and keeps unavailable selected deeds visible
+so a counteroffer can remove them. No board CSS or layout was changed.
+
+The final local `npm run check` passed with Node 24.19.0: **71 server tests and
+50 client tests passed**, zero failures, with **five real-Redis tests skipped**
+because this workspace has no Redis service. Type checks, lint, both production
+builds, packaged Socket.IO/HTTP smoke and `git diff --check` passed. Independent
+review found no blocker and repeated all 45 engine and 16 component tests.
+
+New regression coverage includes:
+
+- Three complete rounds and both manual/automatic turn endings
+- Purchases, cash shortages/recovery, spent jail cards, competing trades,
+  sold/lost/transferred/sabotaged deeds, Vacation skips and unrelated departures
+- Atomic rejected acceptance, participant-only responses, counters with fresh
+  consent, decline/withdraw replay, bankruptcy and terminal-game guards
+- Eight pending offers across turns, countering at the limit, reopening a slot,
+  and trimming closed history without deleting pending offers
+- Actual Socket.IO disconnect/resume after two rounds, stale command guards,
+  exactly-once acceptance and proposal replay; manager restart with temporarily
+  unavailable property and later ownership recovery
+- An additional real-Redis restart/replay test, included in CI's Redis-enabled
+  aggregate; local skip is not reported as a Redis pass
+- Rendered client actions after later turns, unavailable-assets recovery,
+  participant permissions, paused phases, blocked transport and terminal states
+
+This change requires rebuilding **both client and server** and restarting the
+server. Finish disposable `ROOM_STORE=memory` games first: restarting that adapter
+loses its rooms, and this fix does not add memory-store persistence. Redis-backed
+rooms keep their existing snapshot format and configured absolute room lifetime.
+Previously cancelled offers are not resurrected. Browser gameplay/visual checks
+remain unverified for the localhost restriction documented above; no bypass,
+merge or deployment was performed.
+
 ## Browser checks still required before release
 
 ### Viewport-fit desktop board (2026-10-04)

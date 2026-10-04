@@ -62,6 +62,12 @@ the source of truth; the browser displays the same prices and legal choices.
 
 ## Trading, debt, and game end
 
+- Pending offers survive turn changes, complete rounds, and reconnects. They
+  remain open until the recipient accepts/declines, the proposer withdraws, or a
+  counteroffer replaces them. Leaving/bankruptcy or game end closes affected offers.
+- Offers do not reserve cash, cards, or deeds. If those assets change, the offer
+  stays visible but cannot be accepted until its exact terms are available again;
+  either participant can dismiss it and the recipient can counter it.
 - Only the addressed recipient can accept or counter the current version of an
   offer. Its proposer can withdraw it. Changed offers require fresh consent.
 - Both players' money, properties, and jail cards are checked again at acceptance.
