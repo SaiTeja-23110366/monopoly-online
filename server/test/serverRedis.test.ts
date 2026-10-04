@@ -64,6 +64,58 @@ redisTest('real Redis survives process recreation after acknowledged command wit
   } finally { resumed.disconnect(); await server.close(); }
 });
 
+redisTest('real Redis retains pending trades across full rounds and server recreation with exactly-once acceptance', async () => {
+  const namespace = prefix(); let now = Date.now();
+  const options = () => ({ store: new RedisRoomStore(url!, namespace), scheduleTimers: false, logger: () => {}, now: () => now,
+    gameFactory: (code: string) => new MonopolyGame(code, { now: () => now, dice: (): [number, number] => [1, 2] }) });
+  let server = await createGameServer(options()); let port = await server.listen(0, '127.0.0.1');
+  const clients: Socket<ServerEvents, ClientEvents>[] = [];
+  async function client() {
+    const socket: Socket<ServerEvents, ClientEvents> = connect(`http://127.0.0.1:${port}`, { transports: ['websocket'], forceNew: true, reconnection: false, autoConnect: false });
+    clients.push(socket); socket.connect();
+    await new Promise<void>((resolve, reject) => { socket.once('connect', resolve); socket.once('connect_error', reject); });
+    return socket;
+  }
+  async function restart() {
+    for (const socket of clients) socket.disconnect(); await server.close();
+    server = await createGameServer(options()); port = await server.listen(0, '127.0.0.1');
+  }
+  try {
+    const host = await client(); const first = success(await host.emitWithAck('create_room', profile()));
+    const guest = await client(); const second = success(await guest.emitWithAck('join_room', { ...profile(), name: 'Grace', color: PLAYER_COLORS[1], roomCode: first.state.roomCode }));
+    const started = await host.emitWithAck('game_command', command(second.state, { type: 'start_game' })); assert.equal(started.ok, true);
+    const proposal = command(started.state!, { type: 'propose_trade', targetId: second.session.playerId,
+      offer: { money: 100, properties: [], getOutOfJailCards: 0 }, request: { money: 25, properties: [], getOutOfJailCards: 0 } });
+    const proposed = await host.emitWithAck('game_command', proposal); assert.equal(proposed.ok, true);
+    let state = proposed.state!; const tradeId = state.activeTradeId!; const pending = structuredClone(state.trades[tradeId]); const originalTurn = state.turnId;
+    const oldAccept = command(state, { type: 'accept_trade', tradeId });
+    for (let phases = 0; state.turnId < originalTurn + 4; phases++) {
+      assert.ok(phases < 40); assert.notEqual(state.turnDeadline, undefined);
+      now = state.turnDeadline! + 1; await server.rooms.reconcile(state.roomCode); state = await server.rooms.inspect(state.roomCode);
+      assert.deepEqual(state.trades[tradeId], pending); assert.equal(state.activeTradeId, tradeId);
+    }
+    assert.ok(state.players.every(p => p.money < state.startingCash));
+    await restart();
+    const resumedHost = await client(); success(await resumedHost.emitWithAck('resume_session', first.session));
+    const resumedGuest = await client(); state = success(await resumedGuest.emitWithAck('resume_session', second.session)).state;
+    assert.equal(state.turnId, originalTurn + 4); assert.deepEqual(state.trades[tradeId], pending); assert.equal(state.activeTradeId, tradeId);
+    assert.equal((await resumedGuest.emitWithAck('game_command', oldAccept)).error?.code, 'STALE_STATE');
+    const balances = state.players.map(p => p.money); const accept = command(state, { type: 'accept_trade', tradeId });
+    const accepted = await resumedGuest.emitWithAck('game_command', accept); assert.equal(accepted.ok, true);
+    assert.deepEqual(accepted.state!.players.map(p => p.money), [balances[0] - 75, balances[1] + 75]);
+    assert.equal(accepted.state!.trades[tradeId].status, 'accepted');
+    await restart();
+    const finalHost = await client(); success(await finalHost.emitWithAck('resume_session', first.session));
+    const finalGuest = await client(); state = success(await finalGuest.emitWithAck('resume_session', second.session)).state;
+    assert.deepEqual(state.players.map(p => p.money), accepted.state!.players.map(p => p.money)); assert.equal(state.trades[tradeId].status, 'accepted');
+    const beforeReplays = await server.rooms.inspect(state.roomCode);
+    const replay = await finalGuest.emitWithAck('game_command', accept); assert.equal(replay.ok, true); assert.equal(replay.version, accepted.version);
+    const proposalReplay = await finalHost.emitWithAck('game_command', proposal); assert.equal(proposalReplay.ok, true); assert.equal(proposalReplay.version, proposed.version);
+    const duplicate = await finalGuest.emitWithAck('game_command', command(state, { type: 'accept_trade', tradeId })); assert.equal(duplicate.error?.code, 'TRADE_NOT_PENDING');
+    assert.deepEqual(await server.rooms.inspect(state.roomCode), beforeReplays);
+  } finally { for (const socket of clients) socket.disconnect(); await server.close(); }
+});
+
 redisTest('real Redis recovers unacknowledged admissions after restart and preserves accepted purchases and trades', async () => {
   const namespace = prefix(); let now = Date.now();
   const options = () => ({ store: new RedisRoomStore(url!, namespace), scheduleTimers: false, now: () => now,

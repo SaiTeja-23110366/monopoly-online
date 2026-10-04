@@ -340,6 +340,170 @@ test('fresh acceptance rechecks funds and counteroffers have immutable identity 
   assert.equal(game.state.players.reduce((s,p) => s+p.money,0), sum); assert.equal(game.getPlayer('A')!.money,1505);
 });
 
+test('offers survive manual and timed turn changes across several complete rounds', () => {
+  const game = setup({}, 3);
+  ok(game, 'A', { type: 'propose_trade', targetId: 'B', offer: assets(25), request: assets(10) });
+  const tradeId = game.state.activeTradeId!; const original = structuredClone(game.state.trades[tradeId]);
+  for (let turn = 0; turn < 9; turn++) {
+    const actor = game.getCurrentPlayer()!.id;
+    ok(game, actor, { type: 'roll_dice' }); clearLanding(game); phase(game, 'awaiting_end');
+    if (turn % 2) tick(game); else ok(game, actor, { type: 'end_turn' });
+    assert.deepEqual(game.state.trades[tradeId], original);
+    assert.equal(game.state.activeTradeId, tradeId);
+  }
+  assert.equal(game.state.turnId, 10); assert.equal(game.getCurrentPlayer()!.id, 'A');
+  const before = game.state.players.map(player => player.money);
+  ok(game, 'B', { type: 'accept_trade', tradeId });
+  assert.equal(game.state.trades[tradeId].status, 'accepted');
+  assert.deepEqual(game.state.players.map(player => player.money), [before[0] - 15, before[1] + 15, before[2]]);
+  reject(game, 'B', { type: 'accept_trade', tradeId }, 'TRADE_NOT_PENDING');
+  reject(game, 'A', { type: 'reject_trade', tradeId }, 'TRADE_NOT_PENDING');
+});
+
+test('persistent offer cap permits counters and reopened slots while history trimming preserves pending offers', () => {
+  const game = setup({}, 3); const ids: string[] = [];
+  for (let index = 0; index < 8; index++) {
+    ok(game, 'A', { type: 'propose_trade', targetId: 'B', offer: assets(index + 1), request: assets() });
+    ids.push(game.state.activeTradeId!);
+  }
+  const original = structuredClone(game.state.trades);
+  for (let turn = 0; turn < 3; turn++) {
+    const actor = game.getCurrentPlayer()!.id;
+    ok(game, actor, { type: 'roll_dice' }); clearLanding(game); phase(game, 'awaiting_end');
+    ok(game, actor, { type: 'end_turn' });
+  }
+  assert.deepEqual(game.state.trades, original);
+  reject(game, 'C', { type: 'propose_trade', targetId: 'A', offer: assets(), request: assets() }, 'TOO_MANY_TRADES');
+
+  // A counter replaces a pending offer, so it must remain possible at the cap.
+  ok(game, 'B', { type: 'counter_trade', tradeId: ids[7], offer: assets(20), request: assets(10) });
+  const counterId = game.state.activeTradeId!;
+  assert.equal(game.state.trades[ids[7]].status, 'countered');
+  assert.equal(Object.values(game.state.trades).filter(trade => trade.status === 'pending').length, 8);
+  reject(game, 'C', { type: 'propose_trade', targetId: 'A', offer: assets(), request: assets() }, 'TOO_MANY_TRADES');
+  ok(game, 'B', { type: 'reject_trade', tradeId: ids[0] });
+  ok(game, 'A', { type: 'propose_trade', targetId: 'C', offer: assets(), request: assets() });
+  let recycledId = game.state.activeTradeId!;
+  const retainedIds = [...ids.slice(1, 7), counterId];
+  const retained = retainedIds.map(id => structuredClone(game.state.trades[id]));
+
+  // Reuse one slot to build more than forty closed offers without expiring any
+  // of the seven older pending offers, including the counteroffer.
+  for (let index = 0; index < 45; index++) {
+    ok(game, 'A', { type: 'reject_trade', tradeId: recycledId });
+    ok(game, 'A', { type: 'propose_trade', targetId: 'C', offer: assets(), request: assets() });
+    recycledId = game.state.activeTradeId!;
+    assert.deepEqual(retainedIds.map(id => game.state.trades[id]), retained);
+    assert.equal(Object.values(game.state.trades).filter(trade => trade.status === 'pending').length, 8);
+    assert.ok(Object.values(game.state.trades).filter(trade => trade.status !== 'pending').length <= 40);
+  }
+  assert.equal(Object.keys(game.state.trades).length, 48);
+  assert.equal(game.state.trades[ids[0]], undefined);
+  assert.equal(game.state.trades[ids[7]], undefined);
+  assert.equal(game.state.trades[recycledId].status, 'pending');
+  reject(game, 'C', { type: 'propose_trade', targetId: 'A', offer: assets(), request: assets() }, 'TOO_MANY_TRADES');
+});
+
+test('ordinary purchases and cash/card changes keep an unavailable offer pending and acceptance atomic', () => {
+  const game = setup(); game.getPlayer('A')!.getOutOfJailCards = 1;
+  ok(game, 'A', { type: 'propose_trade', targetId: 'B', offer: assets(1500, [], 1), request: assets() });
+  const tradeId = game.state.activeTradeId!;
+  land(game, 4); ok(game, 'A', { type: 'buy_property', propertyIndex: 4, housesToBuy: 0 });
+  assert.equal(game.state.trades[tradeId].status, 'pending');
+  reject(game, 'B', { type: 'accept_trade', tradeId }, 'INSUFFICIENT_TRADE_ASSETS');
+  ok(game, 'A', { type: 'end_turn' });
+  ok(game, 'B', { type: 'propose_trade', targetId: 'A', offer: assets(100), request: assets() });
+  ok(game, 'A', { type: 'accept_trade', tradeId: game.state.activeTradeId! });
+  // The original exact terms become affordable again without recreating the offer.
+  ok(game, 'B', { type: 'accept_trade', tradeId });
+  assert.equal(game.getPlayer('A')!.money, 100 - BOARD_DATA[4].price!); assert.equal(game.getPlayer('B')!.getOutOfJailCards, 1);
+
+  const jail = setup(); jail.getPlayer('A')!.getOutOfJailCards = 1; jail.getPlayer('A')!.inJail = true; jail.getPlayer('A')!.position = RULES.jailIndex;
+  ok(jail, 'A', { type: 'propose_trade', targetId: 'B', offer: assets(0, [], 1), request: assets(30) });
+  const cardTradeId = jail.state.activeTradeId!; ok(jail, 'A', { type: 'use_jail_card' });
+  assert.equal(jail.state.trades[cardTradeId].status, 'pending');
+  reject(jail, 'B', { type: 'accept_trade', tradeId: cardTradeId }, 'INSUFFICIENT_TRADE_ASSETS');
+  ok(jail, 'B', { type: 'reject_trade', tradeId: cardTradeId });
+});
+
+test('competing trades, bank sales and Risk changes do not silently discard property offers', () => {
+  const game = setup({}, 3); game.state.properties[1].ownerId = 'A';
+  ok(game, 'A', { type: 'propose_trade', targetId: 'B', offer: assets(0, [1]), request: assets(200) });
+  const original = game.state.activeTradeId!;
+  ok(game, 'A', { type: 'propose_trade', targetId: 'C', offer: assets(0, [1]), request: assets(100) });
+  const competing = game.state.activeTradeId!;
+  ok(game, 'B', { type: 'accept_trade', tradeId: original });
+  assert.equal(game.state.trades[competing].status, 'pending'); assert.equal(game.state.activeTradeId, competing);
+  reject(game, 'C', { type: 'accept_trade', tradeId: competing }, 'INVALID_TRADE_PROPERTIES');
+  ok(game, 'C', { type: 'counter_trade', tradeId: competing, offer: assets(10), request: assets() });
+  const counter = game.state.activeTradeId!;
+  assert.equal(game.state.trades[competing].status, 'countered');
+  ok(game, 'A', { type: 'accept_trade', tradeId: counter });
+
+  const sale = setup(); sale.state.properties[1].ownerId = 'A'; sale.getPlayer('A')!.money = 0;
+  sale.state.properties[21].ownerId = 'B';
+  ok(sale, 'A', { type: 'propose_trade', targetId: 'B', offer: assets(0, [1]), request: assets(100) });
+  const sold = sale.state.activeTradeId!; land(sale, 21); tick(sale); phase(sale, 'debt');
+  ok(sale, 'A', { type: 'sell_property_to_bank', propertyIndex: 1 });
+  assert.equal(sale.state.trades[sold].status, 'pending');
+  reject(sale, 'B', { type: 'accept_trade', tradeId: sold }, 'INVALID_TRADE_PROPERTIES');
+  ok(sale, 'A', { type: 'reject_trade', tradeId: sold });
+
+  for (const action of ['lose_property', 'transfer_property', 'sabotage'] as const) {
+    const risk = setup({ drawCard: card(action) }, 3); risk.state.properties[1].ownerId = action === 'sabotage' ? 'B' : 'A';
+    const owner = risk.state.properties[1].ownerId;
+    ok(risk, owner, { type: 'propose_trade', targetId: 'C', offer: assets(0, [1]), request: assets(100) });
+    const id = risk.state.activeTradeId!; land(risk, 31); ok(risk, 'A', { type: 'acknowledge_card' });
+    if (action === 'sabotage') ok(risk, 'A', { type: 'execute_sabotage', propertyIndex: 1 });
+    assert.equal(risk.state.trades[id].status, 'pending');
+    reject(risk, 'C', { type: 'accept_trade', tradeId: id }, 'INVALID_TRADE_PROPERTIES');
+  }
+});
+
+test('persistent offers can be declined or withdrawn once, including while movement resolves', () => {
+  for (const responder of ['A', 'B']) {
+    const game = setup({}, 3); ok(game, 'A', { type: 'propose_trade', targetId: 'B', offer: assets(10), request: assets() });
+    const tradeId = game.state.activeTradeId!;
+    land(game, 1); ok(game, 'A', { type: 'pass_property' }); ok(game, 'A', { type: 'end_turn' });
+    ok(game, 'B', { type: 'roll_dice' });
+    reject(game, 'B', { type: 'accept_trade', tradeId }, 'WRONG_PHASE');
+    reject(game, 'B', { type: 'counter_trade', tradeId, offer: assets(), request: assets() }, 'WRONG_PHASE');
+    reject(game, 'C', { type: 'reject_trade', tradeId }, 'TRADE_PARTICIPANTS_ONLY');
+    ok(game, responder, { type: 'reject_trade', tradeId });
+    assert.equal(game.state.trades[tradeId].status, responder === 'A' ? 'cancelled' : 'rejected');
+    reject(game, responder, { type: 'reject_trade', tradeId }, 'TRADE_NOT_PENDING');
+  }
+});
+
+test('Vacation skips and unrelated departure preserve offers; elimination closes only affected offers', () => {
+  const game = setup({}, 4);
+  ok(game, 'A', { type: 'propose_trade', targetId: 'B', offer: assets(10), request: assets() });
+  const keep = game.state.activeTradeId!;
+  ok(game, 'C', { type: 'propose_trade', targetId: 'D', offer: assets(10), request: assets() });
+  const close = game.state.activeTradeId!;
+  game.getPlayer('B')!.skipNextTurn = true;
+  land(game, 1); ok(game, 'A', { type: 'pass_property' }); ok(game, 'A', { type: 'end_turn' });
+  assert.equal(game.getCurrentPlayer()!.id, 'C'); assert.equal(game.state.trades[keep].status, 'pending');
+  ok(game, 'C', { type: 'leave_game' });
+  assert.equal(game.getCurrentPlayer()!.id, 'D'); assert.equal(game.state.trades[keep].status, 'pending');
+  assert.equal(game.state.trades[close].status, 'cancelled');
+  assert.ok(game.state.logs.some(log => log.includes('closed because Player 3 left the game')));
+  reject(game, 'D', { type: 'accept_trade', tradeId: close }, 'TRADE_NOT_PENDING');
+  ok(game, 'B', { type: 'accept_trade', tradeId: keep });
+
+  const bankruptcy = setup({}, 3); bankruptcy.getPlayer('A')!.money = 0; bankruptcy.state.properties[55].ownerId = 'B'; bankruptcy.state.properties[55].houses = 5;
+  ok(bankruptcy, 'A', { type: 'propose_trade', targetId: 'C', offer: assets(), request: assets(10) });
+  const affected = bankruptcy.state.activeTradeId!;
+  land(bankruptcy, 55); tick(bankruptcy); ok(bankruptcy, 'A', { type: 'declare_bankruptcy' });
+  assert.equal(bankruptcy.state.trades[affected].status, 'cancelled');
+  assert.ok(bankruptcy.state.logs.some(log => log.includes('closed because Player 1 went bankrupt')));
+
+  const ended = setup(); ok(ended, 'A', { type: 'propose_trade', targetId: 'B', offer: assets(10), request: assets() });
+  const last = ended.state.activeTradeId!; ok(ended, 'A', { type: 'leave_game' });
+  assert.equal(ended.state.state, 'ended'); assert.equal(ended.state.trades[last].status, 'cancelled');
+  reject(ended, 'B', { type: 'accept_trade', tradeId: last }, 'GAME_ENDED');
+});
+
 test('debt timeout liquidates assets in stable order, settles only recovered rent then ends bankrupt player', () => {
   const game = setup(); game.getPlayer('A')!.money = 10; game.state.properties[55].ownerId = 'B'; game.state.properties[55].houses = 5;
   game.state.properties[1].ownerId = 'A'; land(game, 55); tick(game); phase(game,'debt'); tick(game);

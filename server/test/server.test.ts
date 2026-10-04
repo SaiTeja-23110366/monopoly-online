@@ -121,6 +121,99 @@ test('duplicate, simultaneous and stale commands commit only one legal transitio
   const wrongGame = await host.emitWithAck('game_command', { ...command(current, { type: 'end_turn' }), gameId: randomUUID() }); assert.equal(wrongGame.error?.code, 'WRONG_GAME');
 });
 
+test('pending trade survives full rounds and reconnect while fresh acceptance keeps command guards and dedupe', async t => {
+  let now = 100_000;
+  const h = await harness(t, { now: () => now, store: new MemoryRoomStore(() => now),
+    gameFactory: code => new MonopolyGame(code, { now: () => now, dice: () => [1, 2] }) });
+  const { host, guest, first, second, state: lobby } = await h.pair();
+  const started = await host.emitWithAck('game_command', command(lobby, { type: 'start_game' })); assert.equal(started.ok, true);
+  const proposal = command(started.state!, { type: 'propose_trade', targetId: second.session.playerId,
+    offer: { money: 100, properties: [], getOutOfJailCards: 0 }, request: { money: 25, properties: [], getOutOfJailCards: 0 } });
+  const proposed = await host.emitWithAck('game_command', proposal); assert.equal(proposed.ok, true);
+  let state = proposed.state!;
+  const tradeId = state.activeTradeId!; const pending = structuredClone(state.trades[tradeId]);
+  const staleAccept = command(state, { type: 'accept_trade', tradeId }); const originalTurn = state.turnId;
+  async function deadline() {
+    assert.notEqual(state.turnDeadline, undefined);
+    now = state.turnDeadline! + 1; await h.rooms.reconcile(state.roomCode); state = await h.rooms.inspect(state.roomCode);
+    assert.deepEqual(state.trades[tradeId], pending); assert.equal(state.activeTradeId, tradeId);
+  }
+  const rolled = await host.emitWithAck('game_command', command(state, { type: 'roll_dice' })); assert.equal(rolled.ok, true); state = rolled.state!;
+  for (let phases = 0; state.phase.kind !== 'awaiting_end'; phases++) { assert.ok(phases < 10); await deadline(); }
+  const ended = await host.emitWithAck('game_command', command(state, { type: 'end_turn' })); assert.equal(ended.ok, true); state = ended.state!;
+  assert.deepEqual(state.trades[tradeId], pending);
+  let offline = false; host.on('game_state_update', update => { if (update.players.find(p => p.id === second.session.playerId)?.connected === false) offline = true; });
+  guest.disconnect(); await until(() => offline); state = await h.rooms.inspect(state.roomCode);
+  // Two complete rounds include manual and automatic turn endings and normal cash changes from tax.
+  for (let phases = 0; state.turnId < originalTurn + 4; phases++) { assert.ok(phases < 30); await deadline(); }
+  assert.equal(state.turnId, originalTurn + 4); assert.equal(state.players[state.turnIndex].id, first.session.playerId);
+  assert.ok(state.players.every(p => p.money < lobby.startingCash));
+  const replacement = await h.client(); const resumed = success(await replacement.emitWithAck('resume_session', second.session)); state = resumed.state;
+  assert.deepEqual(state.trades[tradeId], pending); assert.equal(state.activeTradeId, tradeId);
+  const beforeGuards = await h.rooms.inspect(state.roomCode);
+  const stale = await replacement.emitWithAck('game_command', staleAccept); assert.equal(stale.error?.code, 'STALE_STATE');
+  const staleTurn = await replacement.emitWithAck('game_command', { ...command(state, { type: 'accept_trade', tradeId }), expectedTurnId: originalTurn });
+  assert.equal(staleTurn.error?.code, 'STALE_STATE');
+  const wrongGame = await replacement.emitWithAck('game_command', { ...command(state, { type: 'accept_trade', tradeId }), gameId: randomUUID() });
+  assert.equal(wrongGame.error?.code, 'WRONG_GAME');
+  const wrongRecipient = await host.emitWithAck('game_command', command(state, { type: 'accept_trade', tradeId })); assert.equal(wrongRecipient.error?.code, 'TRADE_TARGET_ONLY');
+  assert.deepEqual(await h.rooms.inspect(state.roomCode), beforeGuards);
+  const balances = state.players.map(p => p.money); const accept = command(state, { type: 'accept_trade', tradeId });
+  const accepted = await replacement.emitWithAck('game_command', accept); assert.equal(accepted.ok, true);
+  assert.deepEqual(accepted.state!.players.map(p => p.money), [balances[0] - 75, balances[1] + 75]);
+  assert.equal(accepted.state!.trades[tradeId].status, 'accepted');
+  const afterAcceptance = await h.rooms.inspect(state.roomCode);
+  const replay = await replacement.emitWithAck('game_command', accept); assert.equal(replay.ok, true); assert.equal(replay.version, accepted.version);
+  const proposalReplay = await host.emitWithAck('game_command', proposal); assert.equal(proposalReplay.ok, true); assert.equal(proposalReplay.version, proposed.version);
+  const duplicate = await replacement.emitWithAck('game_command', command(accepted.state!, { type: 'accept_trade', tradeId })); assert.equal(duplicate.error?.code, 'TRADE_NOT_PENDING');
+  assert.deepEqual(await h.rooms.inspect(state.roomCode), afterAcceptance);
+});
+
+test('manager restart retains an unfulfillable pending property offer until current assets allow fresh acceptance', async () => {
+  let now = 100_000; const store = new MemoryRoomStore(() => now);
+  const options = { store, now: () => now, scheduleTimers: false,
+    gameFactory: (code: string) => new MonopolyGame(code, { now: () => now, dice: (): [number, number] => [1, 3] }) };
+  let manager = new RoomManager(options); await manager.start();
+  try {
+    const first = success(await manager.createRoom('a', player()));
+    const second = success(await manager.joinRoom('b', { ...player('Grace', PLAYER_COLORS[1]), roomCode: first.state.roomCode }));
+    let state = second.state;
+    async function act(socket: string, session: SessionCredentials, action: GameCommand) {
+      const ack = await manager.execute(socket, session, command(state, action)); assert.equal(ack.ok, true, JSON.stringify(ack.error)); state = ack.state!; return ack;
+    }
+    async function deadline() { assert.notEqual(state.turnDeadline, undefined); now = state.turnDeadline! + 1; await manager.reconcile(state.roomCode); state = await manager.inspect(state.roomCode); }
+    await act('a', first.session, { type: 'start_game' }); await act('a', first.session, { type: 'roll_dice' });
+    await deadline(); await deadline(); assert.equal(state.phase.kind, 'buy');
+    await act('a', first.session, { type: 'buy_property', propertyIndex: 4, housesToBuy: 1 });
+    await act('a', first.session, { type: 'propose_trade', targetId: second.session.playerId,
+      offer: { money: 0, properties: [4], getOutOfJailCards: 0 }, request: { money: 200, properties: [], getOutOfJailCards: 0 } });
+    const tradeId = state.activeTradeId!; const pending = structuredClone(state.trades[tradeId]); const originalTurn = state.turnId;
+    await act('a', first.session, { type: 'propose_trade', targetId: second.session.playerId,
+      offer: { money: 0, properties: [4], getOutOfJailCards: 0 }, request: { money: 0, properties: [], getOutOfJailCards: 0 } });
+    await act('b', second.session, { type: 'accept_trade', tradeId: state.activeTradeId! });
+    assert.equal(state.properties[4].ownerId, second.session.playerId); assert.deepEqual(state.trades[tradeId], pending);
+    for (let phases = 0; state.turnId < originalTurn + 2; phases++) { assert.ok(phases < 20); await deadline(); assert.deepEqual(state.trades[tradeId], pending); }
+    await manager.close(); manager = new RoomManager(options); await manager.start();
+    success(await manager.resumeSession('new-a', first.session)); state = success(await manager.resumeSession('new-b', second.session)).state;
+    assert.equal(state.turnId, originalTurn + 2); assert.deepEqual(state.trades[tradeId], pending);
+    assert.equal(state.properties[4].ownerId, second.session.playerId); assert.equal(state.properties[4].houses, 1);
+    const cannotAccept = command(state, { type: 'accept_trade', tradeId });
+    const failed = await manager.execute('new-b', second.session, cannotAccept); assert.equal(failed.error?.code, 'INVALID_TRADE_PROPERTIES');
+    assert.deepEqual(await manager.inspect(state.roomCode), state);
+    // Return the asset through a separate legal trade; an old failed command must stay failed.
+    await act('new-b', second.session, { type: 'propose_trade', targetId: first.session.playerId,
+      offer: { money: 0, properties: [4], getOutOfJailCards: 0 }, request: { money: 0, properties: [], getOutOfJailCards: 0 } });
+    await act('new-a', first.session, { type: 'accept_trade', tradeId: state.activeTradeId! });
+    const retriedFailure = await manager.execute('new-b', second.session, cannotAccept);
+    assert.equal(retriedFailure.error?.code, 'INVALID_TRADE_PROPERTIES'); assert.equal(retriedFailure.version, failed.version);
+    assert.deepEqual(await manager.inspect(state.roomCode), state); assert.deepEqual(state.trades[tradeId], pending);
+    const balances = state.players.map(p => p.money);
+    await act('new-b', second.session, { type: 'accept_trade', tradeId });
+    assert.equal(state.trades[tradeId].status, 'accepted'); assert.equal(state.properties[4].ownerId, second.session.playerId); assert.equal(state.properties[4].houses, 1);
+    assert.deepEqual(state.players.map(p => p.money), [balances[0] + 200, balances[1] - 200]);
+  } finally { await manager.close(); }
+});
+
 test('failed durable commit does not mutate, broadcast or acknowledge success; same command retries safely', async t => {
   const store = new FaultStore(); const h = await harness(t, { store }); const { host, guest, state } = await h.pair();
   let broadcasts = 0; guest.on('game_state_update', () => { broadcasts++; });
