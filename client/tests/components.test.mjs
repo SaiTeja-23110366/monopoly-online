@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
-let vite, ActionPanel, PropertyInfoCard, TradeModal, ViewTradeModal, Lobby, board;
+let vite, ActionPanel, PropertyInfoCard, TradeModal, ViewTradeModal, Lobby, board, flightDestinations;
 before(async()=>{
   // Middleware mode transforms actual TSX for SSR without opening a listening server or browser.
   vite=await createServer({server:{middlewareMode:true,hmr:false,watch:null},appType:'custom'});
@@ -11,7 +11,7 @@ before(async()=>{
   ({PropertyInfoCard}=await vite.ssrLoadModule('/src/components/PropertyInfoCard.tsx'));
   ({TradeModal,ViewTradeModal}=await vite.ssrLoadModule('/src/components/TradeModal.tsx'));
   ({Lobby}=await vite.ssrLoadModule('/src/components/Lobby.tsx'));
-  board=(await vite.ssrLoadModule('../shared/board.ts')).SQUARES;
+  ({SQUARES:board,flightDestinations}=await vite.ssrLoadModule('../shared/board.ts'));
   globalThis.location=new URL('https://game.example/?room=ABC123');globalThis.localStorage={getItem(){return null;}};
 });
 after(async()=>{await vite?.close();});
@@ -49,6 +49,20 @@ test('canonical purchase limits, jail release, and flight refresh are explained 
   const html=actions(buy);assert.match(html,/<option value="2">/);assert.doesNotMatch(html,/<option value="3">/);
   const jail=game({kind:'awaiting_roll',playerId:'p1'});jail.players[0].inJail=true;assert.match(actions(jail),/leave for free and can move next turn/);
   const flight=game({kind:'flight',playerId:'p1',airportId:6,destinations:[7,8],ticketPrice:0});assert.match(actions(flight),/Free · you own this airport/);assert.match(actions(flight),/refreshed when you pass or land on Start/);
+});
+test('flight panels and airport deeds explain and exclude every next-airport boundary',()=>{
+  const airports=[6,21,34,45];
+  for(const airportId of airports){
+    const snapshot=game({kind:'flight',playerId:'p1',airportId,destinations:flightDestinations(airportId),ticketPrice:0});
+    snapshot.properties[airportId]={id:airportId,ownerId:'p1',houses:0,mortgaged:false,protected:false};
+    const html=actions(snapshot);
+    assert.match(html,/before the next airport/);assert.match(html,/Airports themselves are not destinations/);
+    for(const airport of airports)assert.doesNotMatch(html,new RegExp(`<option[^>]*value="${airport}"`));
+    const next=airports[(airports.indexOf(airportId)+1)%airports.length],last=(next+55)%56;
+    assert.match(html,new RegExp(`<option[^>]*value="${last}"`));
+    const deed=renderToStaticMarkup(createElement(PropertyInfoCard,{index:airportId,game:snapshot,playerId:'p1',blocked:false,onClose:noop,command:noop}));
+    assert.match(deed,/before the next airport/);assert.match(deed,/Airports themselves are not destinations/);
+  }
 });
 test('tax deeds show percentage rules, never a fixed purchase price or owner',()=>{
   for(const index of [3,40]){
