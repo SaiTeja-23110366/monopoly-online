@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { MonopolyGame, assertGameState } from './gameState';
+import { MonopolyGame, assertGameState, migrateSavedFlightDecision } from './gameState';
 import { PLAYER_COLORS, RULES } from '../../shared/board';
 import type { CommandAck, CommandEnvelope, GameCommand, GameState } from '../../shared/types';
 import type { AdmissionProfile, SessionAck, SessionCredentials } from '../../shared/protocol';
@@ -51,6 +51,7 @@ function envelope(value: unknown): CommandEnvelope {
 }
 function validateRecord(value: unknown, code: string): asserts value is RoomRecord {
   if (!isObject(value) || value.schemaVersion !== 1 || !Number.isSafeInteger(value.storageVersion) || !Number.isSafeInteger(value.createdAt) || !Number.isSafeInteger(value.expiresAt) || !isObject(value.sessions) || !Array.isArray(value.receipts) || value.receipts.length > MAX_RECEIPTS) throw new ProtocolFailure('INVALID_SNAPSHOT', 'This room uses an unsupported or invalid saved format.');
+  migrateSavedFlightDecision(value.state);
   assertGameState(value.state);
   if (value.state.roomCode !== code) throw new ProtocolFailure('INVALID_SNAPSHOT', 'The saved room identifier is invalid.');
   for (const [id, session] of Object.entries(value.sessions)) {

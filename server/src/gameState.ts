@@ -53,6 +53,18 @@ const FINISH: LandingContinuation = { kind: 'finish' };
 const CARD_ACTIONS = new Set(['get_out_of_jail', 'add_money', 'deduct_money', 'go_to_start', 'go_to_jail',
   'go_back_3', 'market_crash', 'lose_property', 'transfer_property', 'sabotage', 'protect']);
 
+/** Remove only the old inclusive endpoint from a persisted, exact legacy quote. */
+export function migrateSavedFlightDecision(state: unknown): void {
+  if (!object(state) || state.schemaVersion !== 2 || !object(state.phase) || state.phase.kind !== 'flight' ||
+    !integer(state.phase.airportId, 0, RULES.boardSize - 1) || !Array.isArray(state.phase.destinations)) return;
+  const destinations = flightDestinations(state.phase.airportId);
+  if (!destinations.length) return;
+  const legacy = [...destinations, (destinations.at(-1)! + 1) % RULES.boardSize];
+  if (state.phase.destinations.length === legacy.length && state.phase.destinations.every((id, index) => id === legacy[index])) {
+    state.phase.destinations = destinations;
+  }
+}
+
 /** Serializable deterministic domain state. It never schedules callbacks or performs I/O. */
 export class MonopolyGame {
   state: GameState;
@@ -389,7 +401,7 @@ export class MonopolyGame {
   private fly(player: Player, destination: number | null): void {
     const phase = this.requirePhase('flight');
     if (destination === null) { this.log(`${player.name} chose not to fly.`); this.finishLanding(); return; }
-    requireRule(integer(destination, 0, RULES.boardSize - 1) && phase.destinations.includes(destination), 'INVALID_DESTINATION', 'Choose a square before or at the next clockwise airport.');
+    requireRule(integer(destination, 0, RULES.boardSize - 1) && phase.destinations.includes(destination) && flightDestinations(phase.airportId).includes(destination), 'INVALID_DESTINATION', 'Choose a square strictly before the next clockwise airport. Airports are not flight destinations.');
     const property = this.state.properties[phase.airportId];
     requireRule(player.position === phase.airportId && player.flightChances > 0 && property.ownerId && !property.mortgaged, 'FLIGHT_UNAVAILABLE', 'This flight is no longer available.');
     const cost = property.ownerId === player.id ? 0 : flightTicket(phase.airportId);
@@ -745,9 +757,13 @@ export function assertGameState(value: unknown): asserts value is GameState {
       !movement.path.every(index => integer(index,0,55)) || movement.path.at(-1) !== movement.to ||
       !['forward','backward','direct'].includes(movement.direction as string) ||
       !['dice','card_forward','card_backward','flight','jail'].includes(movement.reason as string) || !integer(movement.durationMs,1,30_000)) return false;
+    // Saved movements/events are already committed. Preserve an old flight to
+    // the next airport on recovery; new flight commands cannot authorize it.
+    const destinations = flightDestinations(movement.from);
+    const legacyEndpoint = destinations.length ? (destinations.at(-1)! + 1) % RULES.boardSize : -1;
     if (movement.direction === 'direct') return movement.path.length === 1 &&
       ((movement.reason === 'jail' && movement.to === RULES.jailIndex) ||
-      (movement.reason === 'flight' && flightDestinations(movement.from).includes(movement.to)));
+      (movement.reason === 'flight' && (destinations.includes(movement.to) || movement.to === legacyEndpoint)));
     if (movement.reason === 'flight' || movement.reason === 'jail') return false;
     if (movement.reason === 'card_backward' && (movement.direction !== 'backward' || movement.path.length !== 3)) return false;
     if (movement.reason === 'dice' && (movement.direction !== 'forward' || movement.path.length < 2 || movement.path.length > 12)) return false;
