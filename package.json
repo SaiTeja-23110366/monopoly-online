@@ -3,12 +3,18 @@
   "version": "1.0.0",
   "description": "Monopoly Online Fullstack Application",
   "scripts": {
-    "build:client": "cd client && npm install && npm run build",
-    "build:server": "cd server && npm install",
+    "deps": "npm ci --prefix client && npm ci --prefix server",
+    "build:client": "npm run build --prefix client",
+    "build:server": "npm run build --prefix server",
     "build": "npm run build:client && npm run build:server",
-    "start": "cd server && npm start"
+    "typecheck": "npm run typecheck --prefix client && npm run typecheck --prefix server",
+    "lint": "npm run lint --prefix client",
+    "test": "npm test --prefix server && npm test --prefix client",
+    "smoke": "node scripts/smoke.mjs",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build && npm run smoke",
+    "start": "npm start --prefix server"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "^22.18.0 || >=24.0.0"
   }
 }
